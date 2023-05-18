@@ -231,7 +231,7 @@ if exist cmp && if /i "%~2"==":goback" && set result=1 && goto :eof
 if exist ext && set "ext=.%ext%"
 if %COUNT:~1,1%==1 && setlocal && set * && set "COUNT=%COUNT%" && set color=%color% && set col=%col% &; %COUNT:~2% &; if %color%==$[0x0%col:~0,1%] && set /a files=%files%+1 ! set /a folders=%folders%+1 &; set "COUNT=%COUNT:~0,2%set q=%q% && set files=%files% && set folders=%folders%" &; endlocal && set "COUNT=%COUNT%"
 if not %redirect%==1 if not %pipe%==1 if not %cmd%==1 || goto :gotsubdirecho
-if not %s%==1 if not exist PNAMELEN if not exist show |; if not %ls:~0,1%==w && if %COUNT:~0,1%==0 &; setlocal && call :Fn.4 &; if not %h%==0 && echo && echo ! echo &; endlocal && echo $[0x0%col:~4,1%]%DEVICE%%%PATH% && set "COUNT=2%COUNT:~1%" && goto :gotsubdirecho
+if not %s%==1 if not exist PNAMELEN if not exist show |; if not %ls:~0,1%==w && if %COUNT:~0,1%==0 &; setlocal && call :Fn.4 &; if not %h%==0 && echo && echo ! echo &; endlocal && echo %e% $[0x0%col:~4,1%]%DEVICE%%%PATH% && set "COUNT=2%COUNT:~1%" && goto :gotsubdirecho
 if not %s%==1 if not exist PNAMELEN if not exist show |; if %ls:~0,1%==w && if %COUNT:~0,1%==0 && goto :subdirecho
 :gotsubdirecho
 if %ls%==n && call :lslist "%~1" &; shift && goto :ls
@@ -240,7 +240,7 @@ if %ls:~0,2%==ww && call :wide "%~1" &; shift && goto :ls
 if %ls:~0,2%==wc && call :widecolumns "%~1" &; shift && goto :ls
 call :lsother "%~1" &; shift && goto :ls
 
-:blist
+#NOT#:blist
 setlocal
 if %namelen%<=7 &; call Fn.11 "%name%" "\x20" || if %namelen%>=7 && set name=%name%\x20 ! if %namelen%>=6 && set name=%name%\x20\x20 ! if %namelen%>=5 && set name=%name%\x20\x20\x20 ! if %namelen%>=4 && set name=%name%\x20\x20\x20\x20 ! if %namelen%>=3 && set name=%name%\x20\x20\x20\x20\x20 ! if %namelen%>=2 && set name=%name%\x20\x20\x20\x20\x20\x20 ! if %namelen%==1 && set name=%name%\x20\x20\x20\x20\x20\x20\x20
 if not "%color%"=="$[0x0%col:~2,1%]" && if not "%color%"=="$[0x0%col:~3,1%]" && set col2=$[0x0%col:~1,1%] ! set col2=%color% &; echo -e %color%%%name%\x20\x20%col2%%%ext:~1% && set col2=
