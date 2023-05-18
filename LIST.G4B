@@ -1,0 +1,742 @@
+!BAT
+#-#+ LIST.G4B v0.7 (20230518), by deomsh
+#-#+ Function: wildcards '?' and '*' in filenames for ls and sort on name, extension or filesize. Some redirecting/ piping and max 8 commands
+#-# Use 1: LIST.G4B [-col:NXDES] [-mdbase:startsector] [-case] [-sfn|--sfn] [-d|-f] [-e|--e] [-b|-l|-lh|-w|-c] [-ms|-md] [-me] [-o[g|-g]n|-n|e|-e|s|-s [-qs]] [-n|-nq] [-s] FILE [*.EXT] [DIR[*]/] [">" "FILE2"]|["|" "TARGET" [VAR:VAR]]|[CMD "CMD1" ["CMD2-8"]]
+#-# Use 2: LIST.G4B [/?|-?]
+#-# Switches: '-col' set colors of file-name/file-extension/not-empty folder/empty folder/sub-directory: each 1-F; '-mdbase:startsector'>=0x3000 (with sort); '-case' case-sensitive; '-sfn'/ '--sfn' (ls)8+3 names/ Long File Names only; '-d' output directories only; '-e'/ '--e' empty/ not-empty; '-f' output files only; '-b' long list; '-l' long list with filesize; '-lh' same: size in KB, MB or GB; '-w' wide; '-c' same in columns; '-me' multiple extensions, always '*.EXT' - max about 100; '-md' multiple directories, last in PATH, always 'FULLDIR/' OR 'PARTDIR*/' - max about 33; OR '-ms' multiple subdirectories (with DEVICE/:/ root not showed); '-o[-]g' directories first/ last; '-o[g|-g]n|-n' sorted on names, first/ last; '-o[g|-g]e|-e same for extensions; '-o[g|-g]s|-s' same for filesize; '-n|-nq' count files/ folders and echo/ export in 'COUNT'; '-s' parse sub-directories
+#-# Remarks: without .EXT and wildcard '*' like DIR, to get names with extensions only use '.?*'
+#-# Use ">" and '\ ' for spaces in FILE2; use "|" and double quotes around TARGET if containing spaces - same for FILE
+if not "%~1"=="" if not "%~1"=="/?" if not "%~1"=="-?" || goto :help
+setlocal && set /a version=*0x8278 > nul &; if %version%>=20170607 && endlocal ! echo Grub4dos version %version% too old, use version 20170607 or later && endlocal && goto :eof
+setlocal && set * && set col=%lscol%
+debug status > nul ;; set /a debugmsg=%@retval% > nul
+debug 1
+pager status > nul ;; set /a pagersts=%@retval% > nul
+debug msg=0
+set "i=/i" && set "n=-n" && set ls=n
+set CMDLINE=grub> %0 %*
+#BAD!!!#set "CMDLINE=grub> %0 %*"
+if exist col && setlocal && set /l "CMDLINE=%CMDLINE%" &; call Fn.11 "%CMDLINE%" "-col:" && endlocal && goto :parsecmd ! endlocal 
+if exist col &; call Fn.11 "%col%" "0" && echo Existing variable 'col=%col%' is not valid, use help => LIST.G4B -? or /? && goto :eov
+if exist col &; checkrange 0x11111:0xFFFFF calc 0x%col% > nul || echo Existing variable 'col=%col%' is not valid, use help => LIST.G4B -? or /? && goto :eov
+:parsecmd
+if not "%~2"=="" &; set "ARG=%~1" &; if /i "%ARG:~0,5%"=="-col:" && set col=%ARG:~5% && shift && goto :parsecmd
+if not exist mdbase && if not "%~2"=="" &; set "ARG=%~1" &; if /i "%ARG:~0,8%"=="-mdbase:" && set /A mdbase=%ARG:~8% && shift && goto :parsecmd
+if exist i && if not "%~2"=="" &; if /i "%~1"=="-case" && set i= && shift && goto :parsecmd
+if not exist sfn && if not "%~2"=="" &; if /i "%~1"=="-sfn" && set sfn=1 && shift && goto :parsecmd ! if /i "%~1"=="--sfn" && set sfn=0 && shift && goto :parsecmd
+if not exist file && if not exist folder && if not "%~2"=="" &; if /i "%~1"=="-d" && set folder=1 && set file= && shift && goto :parsecmd ! if /i "%~1"=="-f" && set file=1 && set folder= && shift && goto :parsecmd
+if not exist moreext && if not "%~2"=="" &; if /i "%~1"=="-me" && set moreext=1 && shift && goto :parsecmd
+#NOT#if exist n && if not "%~2"=="" &; if /i "%~1"=="-b" && set n= && set ls=b && set "e=-e" && shift && goto :parsecmd
+if exist n && if not "%~2"=="" &; if /i "%~1"=="-b" && set n= && set ls=n && set "e=-e" && shift && goto :parsecmd
+if exist n && if %ls%==n && if not "%~2"=="" &; if /i "%~1"=="-l" && set ls=ls && shift && goto :parsecmd ! if /i "%~1"=="-lh" && set ls=lh && shift && goto :parsecmd ! if /i "%~1"=="-w" && set ls=ww && shift && goto :parsecmd ! if /i "%~1"=="-c" && set ls=wc && set column=0 && shift && goto :parsecmd
+if not exist sort && if not "%~2"=="" &; set "ARG=%~1" &; if /i "%ARG:~0,2%"=="-o" && set /l "sort=%ARG:~2%" && shift && goto :parsecmd
+if not exist QUICK && if not "%~2"=="" &; if /i "%~1"=="-qs" && set "QUICK=Y" && shift && goto :parsecmd
+if not exist COUNT && if not "%~2"=="" &; if /i "%~1"=="-n" && set "COUNT=set q= && set files=0 && set folders=0" && shift && goto :parsecmd
+if not exist COUNT && if not "%~2"=="" &; if /i "%~1"=="-nq" && set "COUNT=set q=Y && set files=0 && set folders=0" && shift && goto :parsecmd
+if not exist EMPTY && if not "%~2"=="" &; if /i "%~1"=="-e" && set EMPTY=Y && shift && goto :parsecmd ! if /i "%~1"=="--e" && set EMPTY=N && shift && goto :parsecmd
+if not exist s && if not "%~2"=="" &; if /i "%~1"=="-s" && set s=1 && shift && goto :parsecmd
+if not exist moredirs && if not exist show && if not "%~2"=="" &; if /i "%~1"=="-md" && set moredirs=1 && shift && goto :parsecmd
+if not exist moredirs && if not exist show && if not "%~2"=="" &; if /i "%~1"=="-ms" && set show=1 && shift && goto :parsecmd
+call Fn.11 "%~1" "/" || echo Path not defined or bad switches in '%CMDLINE:~6%' && echo && call :help && goto :eov ! set ARG=
+if exist mdbase &; if not %mdbase%<=0x7FEFFF && echo mdbase '%mdbase%' above 0x7FEFFF && goto :eov ! if exist %@uefi% && if not %mdbase%>=0x800 && echo mdbase '%mdbase%' below 0x800 && goto :eov ! if not %mdbase%>=0x3000 && echo mdbase '%mdbase%' below 0x3000 && goto :eov
+if %mdbase%>=0xF000 &; if not 0x%mdbase:~-4,4%>=0x1000 && set /A mdbase=%mdbase%+0x1000 ! if 0x%mdbase:~-4,4%>=0xF000 && set /A mdbase=%mdbase%+0x2000
+#NONEEDseems2work#if %ls:~0,2%==ww && if exist %@uefi% && graphicsmode > nul &; if %@retval%<=0xFF && echo Switch '-w' not compatible with grub4efi text modes && goto :eov
+if %file%==1 && set EMPTY=
+if not exist mdbase && set mdbase=0x3001 ! set /A mdbase=%mdbase%+1
+if %ls:~0,1%==w && if exist pagersts && set ls=%ls%%%pagersts% && set pagersts= ! set pagersts=
+if exist col &; call Fn.11 "%col%" "0" && echo Switch '-col:%col%' is not valid, use help => LIST.G4B -? or /? && goto :eov
+if exist col &; checkrange 0x11111:0xFFFFF calc 0x%col% > nul || echo Switch '-col:%col%' is not valid, use help => LIST.G4B -? or /? && goto :eov
+if exist col && set col=%col% &; if not %@retval%==5 && echo Switch '-col:%col%' is not valid, use help => LIST.G4B -? or /? && goto :eov
+if exist col && setlocal && call :colors &; endlocal && set colorsts=%colorsts%
+if not exist col && setlocal && call :colors &; endlocal && set col=%col% && set colorsts=%colorsts%
+if exist sort &; call Fn.11 "%sort%" "-g" && set SORT=fd ! call Fn.11 "%sort%" "g" && set SORT=df
+if exist sort &; call Fn.11 "%sort%" "-n" && set "cmp=n>=" ! call Fn.11 "%sort%" "n" && set "cmp=n<=" ! call Fn.11 "%sort%" "-e" && set "cmp=x>=" ! call Fn.11 "%sort%" "e" && set "cmp=x<=" ! call Fn.11 "%sort%" "-s" && set "cmp=h>=" ! call Fn.11 "%sort%" "s" && set "cmp=l<="
+if exist sort && if not %sort%==g && if not %sort%==-g && if not exist cmp && set badsort=1
+if %badsort%==1 && echo Invalid switch inside '-o%sort%' && echo && call :help && goto :eov
+set sort=
+#BAD#set sort= &; if not %folder%==1 if not %file%==1 || set SORT=
+set DEVICE=%~d1 &; cat --skip=3 --locatei=NTFS\x20\x20\x20\x20 --length=8 %DEVICE%%0+1 > nul && set NTFS=1
+set "PATH=%~p1" &; if "%PATH:~-2,1%"=="*" && set "PATH=%PATH:~0,-2%/" && set WCAEPATH=1
+call Fn.11 "%PATH%" "?" && echo Only one asterisk wildcard allowed at the end of last directory of PATH '%PATH%' && goto :eov
+call Fn.11 "%PATH%" "*" && echo Only one asterisk wildcard allowed at the end of last directory of PATH '%PATH%' && goto :eov
+if not "%PATH%"=="/" && call Fn.11 "%PATH%" "\x20" && setlocal && echo $[] %PATH% | call :pathcheck &; endlocal && set "PATH=%LSPATH%"
+set "NAME=%~n1" &; call Fn.11 "%NAME%" "\x20" && echo -e $[]%NAME% | set NAME=
+if "%NAME:~0,1%"==":" && set filter=0 && set "NAME=%NAME:~1%"
+if not exist NAME && set WCAENAME=1 && set WCQNAME=0 && set WCABNAME=0
+set "EXT=%~x1" &; if exist EXT && call Fn.11 "%EXT%" "\x20" && echo -e $[]%EXT% | set EXT=
+if "%EXT%"=="." && set EXT= ! set "EXT=%EXT:~1%"
+if "%EXT:~0,1%"==":" && set filter=0 && set "EXT=%EXT:~1%"
+if not exist EXT && set WCQEXT=0 && set WCAEEXT=0
+if not %WCAEPATH%==1 if not %moredirs%==1 |; if not "%PATH%"=="/" && set "PATH=%PATH:~0,-1%" ! if not %moredirs%==1 && set PATHNAME=: ! set PATHNAME=
+:asterisk
+if not "%PATH:~-1,1%"=="/" && set "PATHNAME=%PATH:~-1,1%%%PATHNAME%" && set "PATH=%PATH:~0,-1%" && goto :asterisk
+if exist NAME &; if "%NAME%"=="*" && set NAME= && set WCAENAME=1 && set WCQNAME=0 && set WCABNAME=0 ! if "%NAME:~-1,1%"=="*" && set WCAENAME=1 && set "NAME=%NAME:~0,-1%" && goto :asterisk ! if not exist WCAENAME && set WCAENAME=0
+if exist NAME &; if "%NAME%"=="*" && set NAME= && set WCAENAME=1 && set WCQNAME=0 && set WCABNAME=0 ! if "%NAME:~0,1%"=="*" && set WCABNAME=1 && set "NAME=%NAME:~1%" && goto :asterisk ! if not exist WCABNAME && set WCABNAME=0
+if exist EXT &; if "%EXT%"=="*" && set EXT= && set WCAEEXT=1 && set WCQEXT=0 && set WCABEXT=0 ! if "%EXT:~-1,1%"=="*" && set WCAEEXT=1 && set "EXT=%EXT:~0,-1%" && goto :asterisk ! if not exist WCAEEXT && set WCAEEXT=0
+if exist EXT &; if "%EXT%"=="*" && set EXT= && set WCABEXT=1 && set WCQEXT=0 ! if "%EXT:~0,1%"=="*" && set WCABEXT=1 && set "EXT=%EXT:~1%" && goto :asterisk ! if not exist WCABEXT && set WCABEXT=0
+if exist NAME &; call Fn.11 "%NAME%" "?" && set WCQNAME=1 ! set WCQNAME=0
+if exist NAME &; call Fn.11 "%NAME%" "*" && set WCAMNAME=1 ! set WCAMNAME=0
+if exist NAME && set "NAME=%NAME%" &; set /a NAMELEN=%@retval%
+if exist EXT &; call Fn.11 "%EXT%" "?" && set WCQEXT=1 ! set WCQEXT=0
+if exist EXT &; call Fn.11 "%EXT%" "*" && set WCAMEXT=1 ! set WCAMEXT=0
+if exist EXT && set "EXT=%EXT%" &; set /a EXTLEN=%@retval%
+if not exist EXT && if %WCAENAME%==1 && set WCAEEXT=1
+if exist PATHNAME &; call Fn.11 "%PATHNAME%" "\x20" && echo -e $[]%PATHNAME% | set PATHNAME= ! set "PATHNAME=%PATHNAME%" &; set /a PNAMELEN=%@retval%
+if not %moredirs%==1 &; if "%PATHNAME:~0,1%"==":" && if "%PATHNAME%"==":" && set nodir=1 && set "PATHNAME=:*" && set PNAMELEN=1 ! if "%PATHNAME:~0,1%"==":" && set "PATHNAME=%PATHNAME:~1%" && set /a PNAMELEN=%PNAMELEN%-1 && set nodir=1
+if %moredirs%==1 && if "%PATHNAME:~-1,1%"==":" && set "PATHNAME=:%PATHNAME:~0,-1%"
+if %WCAEPATH%==1 &; if exist PATHNAME && set "PATHNAME=%PATHNAME%%*" ! if not %moredirs%==1 && set PATHNAME=:* && set nodir=1 && set PNAMELEN=1 ! set PATHNAME=* && set nodir= && set PNAMELEN=1 &; set WCAEPATH=
+if %sfn%==1 && if not "%PATH%"=="/" && setlocal && call :SFN "PATH" "%PATH%" &; if %SFN%==N && endlocal && echo With '-sfn' PATH '%PATH%' must consist of 8+3 file names only && goto :eov ! endlocal
+shift
+set "ARG=%~1"
+if %moreext%==1 && if exist EXT && set /l "extmask=%EXT% " && set ext=
+if %show%==1 && set moredirs=1 && if "%PATH%"=="/:/" && set "PATH=/" && set show=0 
+if %moredirs%==1 && if exist PATHNAME && set /l "PATHNAME="%PATHNAME%" "
+:moreextdir
+if %moreext%==1 && if "%ARG:~0,2%"=="*." && set /l "extmask=%extmask%%%ARG:~2% " && set "ARG=%~2" &; if not "%ARG:~0,2%"=="*." if not "%ARG:~-1,1%"=="/" || shift && goto :moreextdir ! shift
+if %moredirs%==1 && if "%ARG:~-1,1%"=="/" &; if "%ARG:~0,1%"=="/" && set "ARG=%ARG:~1%" ! set "ARG=%ARG%" &; set /l "PATHNAME=%PATHNAME%"%ARG:~0,-1%" " && set "ARG=%~2" &; if not "%ARG:~-1,1%"=="/" if not "%ARG:~0,2%"=="*." || shift && goto :moreextdir ! shift
+if exist show && set moredirs=
+#TOOMUCHVARSFOR-oe&-ms#if exist PATHNAME && if not exist PNAMELEN && set PNAMELEN=0
+if "%ARG%"==">" && if not "%~2"=="" && set redirect=1 && set "TARGET=%~2" && set ARG= && set ls= && set pipe= && set n= && shift && shift ! set redirect=
+if "%ARG%"=="|" && if not "%~2"=="" && set pipe=1 && set "TARGET=%~2" && set ARG= && set ls= && set redirect= && set n= && shift && shift ! set pipe=
+if not /i "%~1"=="CMD" if not /i "%~2"=="CMD" if not /i "%~3"=="CMD" || set cmd=1 && set pipe= && set redirect= && set n= && set ls= && shift && if /i "%~2"=="CMD" && shift && if /i "%~3"=="CMD" && shift
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD1=%~1"
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD2=%~1"
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD3=%~1"
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD4=%~1"
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD5=%~1"
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD6=%~1"
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD7=%~1"
+if %cmd%==1 &; if not "%~1"=="" &; shift && set "CMD8=%~1"
+if not exist TARGET && set redirect= && set pipe= && set ARG=
+if not "%~1"=="" && set "ARG=%~1"
+if /i %ARG:~0,4%==VAR: && set "VaRzYxWv=%ARG:~4%"
+if %redirect%==1 && echo -n -e \x20 > %TARGET%
+if exist COUNT && set "COUNT=1%COUNT%" ! set "COUNT=0"
+if not %folder%==1 if not %file%==1 if not exist NAME && if not exist EXT && if not exist extmask && if not exist sfn && if not exist PATHNAME && set "COUNT=1%COUNT%" ! set "COUNT=0%COUNT%"
+if %ls:~0,1%==w && if %ls:~2,1%==1 && pager off
+if %ls:~0,1%==w && setlocal && call :pagestat &; set /A hmax=%LINELEN% / %TABLEN% / 2 - 1 * 16 && set /A vmax=%PAGELEN%-1 && set /a lines=%v%+1 &; endlocal && set wmax=%hmax%%%vmax% && set lines=%lines%
+if %ls:~0,1%==w && echo %CMDLINE% && set CMDLINE= ! set CMDLINE=
+if not %s%==1 if not exist PATHNAME |; if %COUNT:~0,1%==1 && echo %e% $[0x%col:~4,1%]%DEVICE%%%PATH% && set /a lines=%lines%+1 && if %ls:~0,2%==wc && set lines=2 && set v0=02 ! if %ls:~0,2%==wc && set lines=1 && set v0=01 ! set lines=%lines% &; if %ls:~2,1%>=1 &; if ls=%ls:~0,2%==wc && set ls=%ls:~0,2%%20 ! set ls=%ls:~0,2%%2%lines%
+if not %s%==1 && if not exist PATHNAME &; if %ls:~0,2%==wc && set lines=1 && set v0=11 ! set lines=%lines% &; if %ls:~2,1%>=1 &; if %ls:~0,2%==wc && set ls=%ls:~0,2%%11 ! set ls=%ls:~0,2%%1%lines%
+if %ls:~0,2%==ww && set lines=1 && if %ls:~2,1%>=1 && set ls=%ls:~0,2%%21
+call :recursels &; goto :endofls
+
+:recursels
+if exist cmp &; if not %QUICK%==Y && set SELECT=Y ! set QUICK= &; call :lssort &; goto :eof
+if exist PATHNAME && if not exist show && echo -n > (md)%mdbase%+255 && write (md)%mdbase%+1 \x0A > nul && setlocal && set folder=1 && set file= && ls %DEVICE%%%PATH% | call :ls &; endlocal && set subdir=3 && cat (md)%mdbase%+255 | call :ls && goto :eof
+if not %s%==1 if not exist show |; set subdir=0 && echo -n > (md)%mdbase%+255 && write (md)%mdbase%+1 \x0A > nul
+if exist SORT &; if %SORT%==df && set subdir=0 ! set subdir=1 &; ls %DEVICE%%%PATH% | call :ls &; if not %lastkey%==Q &; if %SORT%==df && set subdir=1 ! set subdir=0 &; ls %DEVICE%%%PATH% | call :ls &; if %lastkey%==Q && goto :eof ! if not %s%==1 && if not exist show && goto :eof ! set subdir=2 && set file= && set folder= && cat (md)%mdbase%+255 | call :ls && goto :eof
+if not exist SORT && ls %DEVICE%%%PATH% | call :ls &; if %lastkey%==Q && goto :eof ! if not %s%==1 && if not exist show && goto :eof ! set subdir=2 && cat (md)%mdbase%+255 | call :ls
+goto :eof
+
+:endofls
+if %ls:~0,2%==wc &; if %ls:~2,1%>=1 if %COUNT:~1,1%==1 if not %q%==Y || call Fn.5 0 %wmax:~-4,4%
+if %ls:~0,1%==w && if %ls:~2,1%>=1 && if %COUNT:~1,1%==1 && if not %q%==Y && setlocal && call :Fn.4 &; if not %v%==%wmax:~-4,4% && if not %h%==0 && echo && set /a lines=%lines%+3 ! set v=%v% &; if %ls:~0,2%==wc && if %column%==0 && if not %lines%>=%wmax:~-4,4% && if not %v%==%wmax:~-4,4% && endlocal ! if %ls:~0,2%==ww && if not %lines%>=%wmax:~-4,4% && if not %v%==%wmax:~-4,4% && endlocal ! call :Fn.5 0 %wmax:~-4,4% && echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && call :Fn.5 0 %wmax:~-4,4% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %wmax:~-4,4% && endlocal
+if %COUNT:~1,1%==1 && setlocal && set * && set "COUNT=%COUNT%" && set n=%n% && set folder=%folder% && set file=%file% && call :Fn.4 &; if not %h%==0 && if not %q%==Y && echo && echo ! if not %q%==Y && echo ! set h=%h% &; %COUNT:~2% &; if not %q%==Y && if not %file%==1 && if not %folder%==1 && echo -e \x20\x20Number of folders: %folders%\x20\x20Number of files: %files% ! if not %q%==Y && if %folder%==1 && echo -e \x20\x20Number of folders: %folders% ! if not %q%==Y && if %file%==1 && echo -e \x20\x20Number of files: %files% ! set q=%q% &; if %q%==Y && endlocal && set "COUNT=set folders=%folders% && set files=%files%" ! endlocal && set COUNT=
+if %redirect%==1 && cat --locate=\x0A --replace=\x20 %TARGET% > nul
+if %redirect%==1 && cat --locate=\x20\x00 --replace=\x00\x00 %TARGET% > nul
+if exist VaRzYxWv && call set vArZyXwV=%%%VaRzYxWv%%%
+#BAD#call set vArZyXwV=%%%VaRzYxWv%%%
+if %ls:~0,1%==w &; if %ls:~2,1%>=1 && pager on ! if %ls:~2,1%==0 && pager off
+:eov
+if "%COUNT%"=="10" && set COUNT=
+if exist colorstst && color standard=%colorsts%
+debug %debugmsg% > nul
+endlocal && set lscol=%col% && set "COUNT=%COUNT%" && set "%VaRzYxWv%=%vArZyXwV%"
+#BAD#endlocal && set "COUNT=%COUNT%" && if exist vArZyXwV && set "%VaRzYxWv%=%vArZyXwV%"
+debug msg=3
+goto :eof
+
+:pathcheck
+if not exist LSPATH && set "LSPATH=%~1" && shift
+if "%~1"=="" && goto :eof
+set "LSPATH=%LSPATH%\ %~1"
+shift
+goto :pathcheck
+
+:lssort
+if exist SORT &; if %SORT%==df && set subdir=0 ! set subdir=1
+if exist mdbase && set /A mdls=%mdbase%+0xFF ! set mdls=0x3100 &; set /A mdlsend=%mdls%+0x100 && set /A mdbuck=%mdls%+0x100
+:lssort2
+set /A address=%mdls% * 0x200 && setlocal && set /A memrange=0xF00 * 0x200 &; call Fn.24 %address% 0x00 %memrange% && endlocal
+echo -n -e \x0A > (md)%mdls%+1
+if %address%>=0x1000000 && set mbase=%address:~0,-6% ! set mbase=0x
+set /A address=%address%+1
+if exist PATHNAME && if not exist show && echo -n > (md)%mdbase%+255 && write (md)%mdbase%+1 \x0A > nul && setlocal && set folder=1 && set file= && ls %DEVICE%%%PATH% | call :inmem &; if "%cmp:~1%"=="<=" && set bucket=0 ! set bucket=35 &; call :sortbuckets &; if %lastkey%==Q && endlocal && set lastkey=%lastkey% && goto :eof ! endlocal && set lastkey=%lastkey% && set lines=%lines% && set column=%column% && set v0=%v0% && set "COUNT=%COUNT%" && set subdir=3 && cat (md)%mdbase%+255 | call :ls && goto :eof
+if not %s%==1 if not exist show |; if not %subdir%==1 && set subdir=0 && echo -n > (md)%mdbase%+255 && write (md)%mdbase%+1 \x0A > nul
+ls %DEVICE%%%PATH% | call :inmem
+setlocal &; if "%cmp:~1%"=="<=" && set bucket=0 ! set bucket=35 &; call :sortbuckets &; if %lastkey%==Q && endlocal && set lastkey=%lastkey% && goto :eof ! endlocal && set lastkey=%lastkey% && set lines=%lines% && set column=%column% && set v0=%v0% && set "COUNT=%COUNT%"
+if exist SORT &; if %SORT%==df && if %subdir%==0 && set subdir=1 && goto :lssort2 ! if %SORT%==fd && if %subdir%==1 && set subdir=0 && goto :lssort2
+if not %s%==1 if not exist show |; set subdir=2 && cat (md)%mdbase%+255 | call :ls
+goto :eof
+
+:ls
+if exist cmp && if /i "%~1"==":goback" && set result=0 && goto :eof
+if %lastkey%==Q && goto :eof ! if exist lastkey && set ls=%lastkey%
+setlocal && set * && set col=%col% && set ls=%ls% && call :lastkey "Esc" &; if not %lastkey%==0x51 && if not %lastkey%==0x71 && endlocal && set lastkey=%ls% ! endlocal && set lastkey=Q && goto :eof
+if "%~1"=="" && if "%~2"=="" && if "%~3"=="" && if "%~4"=="" && if "%~5"=="" && if "%~6"=="" && if "%~7"=="" && if "%~8"=="" && goto :eof
+if %subdir%==3 && goto :lssubdir
+if %subdir%==2 && goto :lssubdir
+:filter
+set name= && set namelen= && set filename= && set ext= && set fileext= && set extlen= && set filesize= && set color=
+call Fn.11 "%~1" "|" && shift && goto :ls
+call Fn.11 "%~1" ":" && shift && goto :ls
+call Fn.11 "%~1" "?" && shift && goto :ls
+call Fn.11 "%~1" "*" && shift && goto :ls
+call Fn.11 "%~1" "\x25" && shift && goto :ls
+errorcheck off
+debug msg=1
+if not %NTFS%==1 && raw cat --length=0 %DEVICE%%%PATH%%%~1 | set filesize=
+debug msg=0
+if %NTFS%==1 &; raw cat --length=0 %DEVICE%%%PATH%%%~1 > nul && set /a filesize=*0x8290 > nul ! set filesize=0 &; if %filesize%==0 && set filesize=
+errorcheck off
+if exist filesize && set color=$[0x0%col:~0,1%] && set filesize= ! ls %DEVICE%%%PATH%%%~1/ > nul && set color=$[0x0%col:~2,1%] ! set color=$[0x0%col:~3,1%]
+set "name=%~n1" &; if not exist name && shift && goto :ls
+set "ext=%~x1" &; if "%ext%"=="." && set ext= ! set "ext=%ext:~1%"
+if %sfn%==1 && setlocal && call :SFN "FILE" "%name%.%ext%" &; if %SFN%==N && endlocal && shift && goto :ls ! endlocal
+if %subdir%==0 && if not /i "%~2"==":goback" && if not %color%==$[0x0%col:~0,1%] && if not %color%==$[0x0%col:~3,1%] &; if not %s%==1 if not exist show |; pause --wait=0 %~1 >> (md)%mdbase%+255
+if not %subdir%==0 if not %folder%==1 |; if "%color%"=="$[0x0%col:~0,1%]" &; if %folder%==1 && shift && goto :ls ! if exist SORT && shift && goto :ls
+if %subdir%==3 && if "%color%"=="$[0x0%col:~3,1%]" && shift && goto :ls
+if exist cmp && if /i "%~2"==":goback" && if "%color%"=="$[0x0%col:~2,1%]" && set result=1 && goto :eof
+if %show%==0 && shift && goto :ls
+if %EMPTY%==Y && if not %subdir%==2 && if "%color%"=="$[0x0%col:~2,1%]" && shift && goto :ls
+if %EMPTY%==N && if "%color%"=="$[0x0%col:~3,1%]" &; if not %s%==1 && shift && goto :ls ! if %subdir%==2 && shift && goto :ls
+if not %subdir%==1 if not %file%==1 |; if not "%color%"=="$[0x0%col:~0,1%]" && shift && goto :ls
+if %sfn%==0 && setlocal && call :SFN "FILE" "%name%.%ext%" &; if not %SFN%==N && if not %subdir%>=2 && endlocal && shift && goto :ls ! endlocal
+call Fn.11 "%name%" "\x20" && echo -e $[]%name% | set filename= ! set filename=%name%
+set "filename=%filename%" &; set /a namelen=%@retval%
+call Fn.11 "%ext%" "\x20" && echo -e $[]%ext% | set fileext= ! set fileext=%ext%
+if exist fileext && set "fileext=%fileext%" &; set /a extlen=%@retval%
+if %moredirs%==1 && setlocal &; if exist fileext && set "filename=%filename%.%fileext%" && set /a namelen=%namelen%+%extlen%+1 ! set "filename=%filename%" &; echo $[] %PATHNAME% | call :moredirs &; endlocal && shift && goto :ls
+if exist PATHNAME && if not exist show && if not "%PATHNAME:~-1,1%"=="*" &; call if %i% "%PATHNAME%"=="%filename%" &; if %nodir%==1 && shift && goto :ls ! pause --wait=0 %~1 >> (md)%mdbase%+255 && shift && goto :ls
+if "%PATHNAME:~-1,1%"=="*" && if exist PNAMELEN && if not exist show && if %namelen%>=%PNAMELEN% &; call if %i% "%PATHNAME:~0,-1%"=="%^filename:~0,%PNAMELEN%%%" &; if %nodir%==1 && shift && goto :ls ! pause --wait=0 %~1 >> (md)%mdbase%+255 && shift && goto :ls
+if exist PATHNAME && if not exist show &; if %nodir%==1 && pause --wait=0 %~1 >> (md)%mdbase%+255 && shift && goto :ls ! shift && goto :ls
+if not exist NAME && goto :lsext
+if %WCAENAME%==1 && if %WCQNAME%==0 && if %WCABNAME%==0 && if %WCAMNAME%==0 && if %namelen%>=%NAMELEN% &; call if %i% "%NAME%"=="%^filename:~0,%NAMELEN%%%" && goto :lsext ! shift && goto :ls
+if %WCABNAME%==1 && if %WCQNAME%==0 && if %WCAENAME%==0 && if %WCAMNAME%==0 && if %namelen%>=%NAMELEN% && set /a skiplen=%namelen%-%NAMELEN% &; call if %i% "%NAME%"=="%^filename:~%skiplen%,%NAMELEN%%%" && goto :lsext ! shift && goto :ls
+if %WCABNAME%==1 && if %WCQNAME%==0 && if %WCAENAME%==1 && if %WCAMNAME%==0 && if %namelen%>=%NAMELEN% && setlocal &; if "%i%"=="/i" && set /u "filename=%filename%" && set /u "NAME=%NAME%" ! set i=%i% &; call Fn.11 "%filename%" "%NAME%" && endlocal && goto :lsext ! endlocal && shift && goto :ls
+if not %WCQNAME%==1 if not %WCAMNAME%==1 |; setlocal && set wca=%WCAENAME% &; if %WCABNAME%==1 && set A=1 ! set A=0 &; set "TEST=%NAME%" && set LEN=%NAMELEN% && set L=%NAMELEN% && set S=0 && set N=1 && set "test=%filename%" && set len=%namelen% && set s=0 && set n=0 && set res=0 && set sub=0 && call :maskloop &; if %result%==1 && endlocal && goto :lsext ! endlocal && shift && goto :ls
+if %i% "%filename%"=="%NAME%" && goto :lsext ! shift && goto :ls
+:lsext
+if exist EXT && if not exist ext && shift && goto :ls
+if %moreext%==1 && setlocal && set /l "fileext=%fileext%" &; call Fn.11 "%extmask%" "%fileext%\x20" && if exist ext && endlocal && goto :lsecho ! endlocal && shift && goto :ls
+if not exist EXT && if %WCAEEXT%==1 && goto :lsecho
+if %WCAEEXT%==1 && if %WCQEXT%==0 && if %WCABEXT%==0 && if %WCAMEXT%==0 && if %extlen%>=%EXTLEN% &; call if %i% "%EXT%"=="%^fileext:~0,%EXTLEN%%%" && goto :lsecho ! shift && goto :ls
+if %WCABEXT%==1 && if %WCQEXT%==0 && if %WCAEEXT%==0 && if %WCAMEXT%==0 && if %extlen%>=%EXTLEN% && set /a skiplen=%extlen%-%EXTLEN% &; call if %i% "%EXT%"=="%^fileext:~%skiplen%,%EXTLEN%%%" && goto :lsecho ! shift && goto :ls
+if %WCABEXT%==1 && if %WCQEXT%==0 && if %WCAEEXT%==1 && if %WCAMEXT%==0 && if %extlen%>=%EXTLEN% && setlocal &; if "%i%"=="/i" && set /u "fileext=%fileext%" && set /u "EXT=%EXT%" ! set i=%i% &; call Fn.11 "%fileext%" "%EXT%" && endlocal && goto :lsecho ! endlocal && shift && goto :ls
+if not %WCQEXT%==1 if not %WCAMEXT%==1 |; setlocal && set wca=%WCAEEXT% &; if %WCABEXT%==1 && set A=1 ! set A=0 &; set "TEST=%EXT%" && set LEN=%EXTLEN% && set L=%EXTLEN% && set S=0 && set N=1 && set "test=%fileext%" && set len=%extlen% && set s=0 && set n=0 && set res=0 && set sub=0 && call :maskloop &; if %result%==1 && endlocal && goto :lsecho ! endlocal && shift && goto :ls
+if %i% "%fileext%"=="%EXT%" && goto :lsecho ! shift && goto :ls
+:lsecho
+if exist cmp && if /i "%~2"==":goback" && set result=1 && goto :eof
+if exist ext && set "ext=.%ext%"
+if %COUNT:~1,1%==1 && setlocal && set * && set "COUNT=%COUNT%" && set color=%color% && set col=%col% &; %COUNT:~2% &; if %color%==$[0x0%col:~0,1%] && set /a files=%files%+1 ! set /a folders=%folders%+1 &; set "COUNT=%COUNT:~0,2%set q=%q% && set files=%files% && set folders=%folders%" &; endlocal && set "COUNT=%COUNT%"
+if not %redirect%==1 if not %pipe%==1 if not %cmd%==1 || goto :gotsubdirecho
+if not %s%==1 if not exist PNAMELEN if not exist show |; if not %ls:~0,1%==w && if %COUNT:~0,1%==0 &; setlocal && call :Fn.4 &; if not %h%==0 && echo && echo ! echo &; endlocal && echo $[0x0%col:~4,1%]%DEVICE%%%PATH% && set "COUNT=2%COUNT:~1%" && goto :gotsubdirecho
+if not %s%==1 if not exist PNAMELEN if not exist show |; if %ls:~0,1%==w && if %COUNT:~0,1%==0 && goto :subdirecho
+:gotsubdirecho
+if %ls%==n && call :lslist "%~1" &; shift && goto :ls
+#NOT#if %ls%==b && call :blist "%~1" &; shift && goto :ls
+if %ls:~0,2%==ww && call :wide "%~1" &; shift && goto :ls
+if %ls:~0,2%==wc && call :widecolumns "%~1" &; shift && goto :ls
+call :lsother "%~1" &; shift && goto :ls
+
+:blist
+setlocal
+if %namelen%<=7 &; call Fn.11 "%name%" "\x20" || if %namelen%>=7 && set name=%name%\x20 ! if %namelen%>=6 && set name=%name%\x20\x20 ! if %namelen%>=5 && set name=%name%\x20\x20\x20 ! if %namelen%>=4 && set name=%name%\x20\x20\x20\x20 ! if %namelen%>=3 && set name=%name%\x20\x20\x20\x20\x20 ! if %namelen%>=2 && set name=%name%\x20\x20\x20\x20\x20\x20 ! if %namelen%==1 && set name=%name%\x20\x20\x20\x20\x20\x20\x20
+if not "%color%"=="$[0x0%col:~2,1%]" && if not "%color%"=="$[0x0%col:~3,1%]" && set col2=$[0x0%col:~1,1%] ! set col2=%color% &; echo -e %color%%%name%\x20\x20%col2%%%ext:~1% && set col2=
+endlocal
+goto :eof
+
+:lslist
+if not "%color%"=="$[0x0%col:~2,1%]" && if not "%color%"=="$[0x0%col:~3,1%]" && set col2=$[0x0%col:~1,1%] ! set col2=%color% &; if %n%==-n && set "color=%color% " ! set n=%n% &; echo %n% %e% %color%%%name%%%col2%%%ext% && set col2=
+#POSSIBLE#if not "%color%"=="$[0x0%col:~2,1%]" && if not "%color%"=="$[0x0%col:~3,1%]" && set col2=$[0x0%col:~1,1%] ! set col2=%color% &; if %n%==-n && set "color=%color% " ! set n=%n% &; if not %NTFS%==1 && echo %n% %e% %color%%%name%%%col2%%%ext% && set col2= ! if %n%==-n && if not "%color%"=="$[0x0%col:~3,1%] " && echo %n% %e% %color%%%name%%%col2%%%ext% && set col2= ! if %n%==-n && ls %DEVICE%%%PATH%%%name%%%ext% && set col2= ! if not "%color%"=="$[0x0%col:~3,1%]" && echo %n% %e% %color%%%name%%%col2%%%ext% && set col2= ! ls %DEVICE%%%PATH%%%name%%%ext% && set col2= && echo
+goto :eof
+
+:wide
+setlocal
+if exist lastkey && if not %lastkey%==Q && set ls=%lastkey%
+if exist extlen && set /a fullen=%namelen%+%extlen%+1 ! set fullen=%namelen% && set col2= && set ext=
+call :Fn.4 &; set lineplus=0 && if %fullen%>=16 && set /a lineplus=%h%+%fullen%/%wmax:~0,4% &; set /a lines=%lines%+%lineplus%
+if %h%==0 && set /a lines=%lines%+1 ! if not %h%<=%wmax:~0,4% && echo && set h=0 && set /a lines=%lines%+1 && if not %v%>=%wmax:~-4,4% && set /a v=%v%+1
+if %h%==0 && if %ls:~2,1%>=2 && setlocal && set /a lsplus=%ls:~3%+1+%lineplus% &; endlocal && set ls=%ls:~0,3%%%lsplus%ot %h%==0 && if %ls:~2,1%>=2 && if %lineplus%>=1 && setlocal && set /a lsplus=%ls:~3%+%lineplus% &; endlocal && set ls=%ls:~0,3%%%lsplus%
+if %ls:~2,1%>=2 && if %v%==%wmax:~-4,4% && if %ls:~3%>=%wmax:~-4,4% && set ls=%ls:~0,3%%0 &; if not %h%==0 && echo ! set h=%h% &; echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && set lines=0 && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :eof
+if %ls:~2,1%>=1 &; if %v%==%wmax:~-4,4% && if %lines%>=%wmax:~-4,4% &; if not %h%==0 && echo ! set h=%h% &; echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && set lines=0 && set ls=%ls:~0,3%%0 && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :eof
+if not "%color%"=="$[0x0%col:~2,1%]" && if not "%color%"=="$[0x0%col:~3,1%]" && set col2=$[0x0%col:~1,1%] ! set col2=%color% &; echo -n -e %color%%%name%%%col2%%%ext%\x20
+call :Fn.4 &; calc %h% % 16 > nul && echo -n -e \t &; call :Fn.4 &; calc %h% % 16 && echo -n -e \t
+if not %lastkey%==Q && set lastkey=%ls%
+endlocal && set lines=%lines% && set lastkey=%lastkey% && set ls=%ls%
+goto :eof
+
+:lsother
+setlocal
+if not %ls%==ls if not %ls%==lh if not %cmd%==1 |; raw cat --length=0 %DEVICE%%%PATH%%%~1 > nul && set /a filesize=*0x8290 ! set filesize=0 &; if %filesize%==0 &; if not "%color%"=="$[0x0%col:~2,1%]" if not "%color%"=="$[0x0%col:~3,1%]" || set filesize=
+if %ls%==lh &; if %filesize%>=1g && set /a filesize=%filesize%/1g && set h=\x20GB ! if %filesize%>=1m && set /a filesize=%filesize%/1m && set h=\x20MB ! if %filesize%>=1k && set /a filesize=%filesize%/1k && set h=\x20KB ! if %color%==$[0x0%col:~0,1%] && set h=\x20\x20\x20 ! set h=
+if not %ls%==ls if not %ls%==lh |; if %ls%==lh && set len=8 ! set len=11 &; set filesize=%filesize% &; set /a spacelen=%len% - %@retval% * 4 &; if not exist filesize && if %scale%==1 && set spacelen=36 ! if not exist filesize && set spacelen=44 ! if not %spacelen%>=0 && set spacelen=0
+if not %ls%==ls if not %ls%==lh |; set spaces=\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 &; if %spacelen%>=4 && call set spaces=%^spaces:~0,%spacelen%%% ! set spaces=
+if not %ls%==ls if not %ls%==lh |; echo -e %spaces%%%filesize%%%h%\x20\x20%color%%%name%$[0x0%col:~1,1%]%ext% && endlocal && goto :eof
+if %redirect%==1 && pause --wait=0 %name%%%ext% >> %TARGET% && endlocal && goto :eof
+if %pipe%==1 && pause --wait=0 %name%%%ext% | %TARGET% && endlocal && goto :eof
+setlocal && set * && set cmd=%cmd% && set "CMD1=%CMD1%" && set "CMD2=%CMD2%" && set "CMD3=%CMD3%" && set "CMD4=%CMD4%" && set "CMD5=%CMD5%" && set "CMD6=%CMD6%" && set "CMD7=%CMD7%" && set "CMD8=%CDM8%" && set DEVICE=%DEVICE% && set "PATH=%PATH%" && set "name=%name%" && set "ext=%ext%" && set filesize=%filesize% && set color=%color% && set "filename=%filename%" && set "fileext=%fileext%"
+if %cmd%==1 && set "file=%DEVICE%%%PATH%%%~1"
+if %cmd%==1 && if exist CMD1 &; %CMD1%
+if %cmd%==1 && if exist CMD2 &; %CMD2%
+if %cmd%==1 && if exist CMD3 &; %CMD3%
+if %cmd%==1 && if exist CMD4 &; %CMD4%
+if %cmd%==1 && if exist CMD5 &; %CMD5%
+if %cmd%==1 && if exist CMD6 &; %CMD6%
+if %cmd%==1 && if exist CMD7 &; %CMD7%
+if %cmd%==1 && if exist CMD8 &; %CMD8%
+endlocal
+endlocal
+goto :eof
+
+:widecolumns
+setlocal
+if exist lastkey && if not %lastkey%==Q && set ls=%lastkey% && set lastkey=
+#22varsWith-c&max44varsWith-c-on-ms-s#call cntvars.lll cntvars && pause
+if not "%color%"=="$[0x0%col:~2,1%]" && if not "%color%"=="$[0x0%col:~3,1%]" && set col2=$[0x0%col:~1,1%] ! set col2=%color%
+if "%name:~0,1%"=="\" && set /a namelen=%namelen%+2
+if exist extlen && set /a fullen=%namelen%+%extlen%+1 ! set fullen=%namelen% && set col2= && set ext=
+:widecolumnsloop
+if %fullen%>=15 && call :widecolumnsLFN ! echo -n -e %color%%%name%%%col2%%%ext% && set fullen=
+set minus=0 &; if not %s%==1 if not exist show |; if %ls:~2,1%==3 && if %lines%==22 && if %column%==0 && if %v0:~1%==2 && set minus=1 && set v0=%v0:~0,1%%1
+set /a lines=%lines%+1-%minus% && if %column%==0 && if %ls:~2,1%>=2 && setlocal && set /a lsplus=%ls:~3%+1-%minus% &; endlocal && set ls=%ls:~0,3%%%lsplus%
+call :Fn.4
+#NOTNEEDED#if not exist fullen && if %s%==1 && if %column%==0 && if %v0:~0,1%==1 && if not %v%==%wmax:~-4,4% && if %lines%>=%wmax:~-4,4% && call :Fn.5 32 1 &; endlocal && set v0=01 && set lines=1 && set column=32 && set ls=%ls% && set lastkey=%ls% && goto :eof
+if %column%==0 && if %lines%<=%wmax:~-4,4% && if %v%==%wmax:~-4,4% && echo
+if %lines%<=%wmax:~-4,4% && if not %v%==%wmax:~-4,4% && set /a v=%v%+1
+if %lines%>=%wmax:~-4,4% && if not %column%>=%wmax:~0,4% && set /a column=%column%+16 && set lines=%v0:~1% && set v=%v0:~1%
+call :Fn.5 %column% %v%
+if %lines%>=%wmax:~-4,4% && if %column%>=%wmax:~0,4% && call :Fn.5 0 %wmax:~-4,4%
+if %v%==%wmax:~-4,4% && if %column%>=%wmax:~0,4% && if %lines%>=%wmax:~-4,4% &; if %s%==1 && if %ls:~2,1%==2 && set lines=0 && set v0=00 && set ls=%ls:~0,2%%30 && set column=0 ! if exist show && if %ls:~2,1%==2 && set lines=0 && set v0=00 && set ls=%ls:~0,2%%30 && set column=0 ! if %s%==1 && if %ls:~2,1%==3 && set lines=0 && set v0=10 && set ls=%ls:~0,3%%0 && set column=0 ! if exist show && if %ls:~2,1%==3 && set lines=0 && set v0=10 && set ls=%ls:~0,3%%0 && set column=0 ! set lines=0 && set v0=10 && set ls=%ls:~0,2%%30 && set column=0 &; call :Fn.5 0 %wmax:~-4,4% && if %ls:~2,1%>=1 && echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :eof
+if %v%==%wmax:~-4,4% && if %ls:~2,1%>=2 && if not %ls:~3%<=%wmax:~-4,4% && if %column%==0 && set ls=%ls:~0,2%%30 && set v0=1%v0:~1% &; echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :eof
+if "%name%"==" " &; if exist ext if not "%ext%"==" " |; set name= && set namelen= && set ext= && set extlen=
+if not exist name && if "%ext%"==" " && set ext= && set extlen=
+if exist fullen &; if not %namelen%>=1 if not %extlen%>=1 |; if not exist name if not exist ext |; goto :widecolumnsloop
+if not %lastkey%==Q && set lastkey=%ls%
+endlocal && set lines=%lines% && set column=%column% && set v0=%v0% && set ls=%ls% && set lastkey=%lastkey%
+goto :eof
+
+:widecolumnsLFN
+call Fn.11 "%name%" "\x20" && set /a namelen=%namelen%+1
+call Fn.11 "%ext%" "\x20" && set /a extlen=%extlen%+1
+if %namelen%>=11 &; if "%name:~13,1%"=="\" && set "name=%name:~0,13% %name:~13%" && set /a namelen=%namelen%+0 ! set namelen=%namelen% &; echo -n -e %color%%%name:~0,14% && set "name= %name:~14%" && set /a namelen=%namelen%-13 && goto :eof
+if %namelen%>=1 && if not %extlen%>=1 && echo -n -e %color%%%name% && set name= && set namelen= && goto :eof
+if %namelen%>=1 && if not %extlen%>=5 && echo -n -e %color%%%name%%%col2%%%ext% && set name= && set namelen= && set ext= && set extlen= && goto :eof
+if %namelen%>=1 && if %extlen%>=5 &; if "%ext:~4,1"=="\" && set "ext=%ext:~0,4% %ext:~4%" && set /a extlen=%extlen%+0 ! set extlen=%extlen% &; echo -n -e %color%%%name%%%col2%%%ext:~0,5% && set name= && set namelen= && set "ext= %ext:~5%" && set /a extlen=%extlen%-5 && goto :eof
+if not %namelen%>=1 && if %extlen%>=5 &; if "%ext:~13,1"=="\" && set "ext=%ext:~0,13% %ext:~13%" && set /a extlen=%extlen%+0 ! set extlen=%extlen% &; echo -n -e %col2% %ext:~0,14% && set "ext= %ext:~14%" && set /a extlen=%extlen%-13 && goto :eof
+if not %namelen%>=1 && if %extlen%>=1 && echo -n -e %col2% %ext% && set ext= && set extlen= && set fullen=
+goto :eof
+
+:lssubdir
+if exist lastkey && if not %lastkey%==Q && set ls=%lastkey%
+if %COUNT:~0,1%==2 && set "COUNT=0%COUNT:~1%"
+setlocal
+if exist show && if %show%<=1 && setlocal && set "name=%~1" &; call Fn.11 "%name%" "\x20" && echo -e $[]%name% | set name= ! set "name=%name%" &; set /a namelen=%@retval% &; set show= && echo $[] %PATHNAME% | call :moresubs &; if %s%==1 && if %show%==1 && endlocal && set show=2 ! endlocal && set show=%show%
+set "PATH=%PATH%%%~1/"
+if %COUNT:~0,1%==0 && goto :nosubdirecho
+:subdirecho
+if exist n && if not %ls:~0,1%==w && setlocal && call :Fn.4 &; if %h%==0 && endlocal ! endlocal && echo
+if exist n && if %ls:~0,2%==wc && setlocal && call :Fn.4 &; if %h%==0 && endlocal && set /a v=%v%+1 ! if %column%==0 && endlocal && echo && set v=%v% ! endlocal && set ls=%ls:~0,3%%%wmax:~-4,4% && set v=%wmax:~-4,4% && call :Fn.5 0 %wmax:~-4,4%
+if exist n && if %ls:~0,2%==ww && setlocal && set /a lsplus=%ls:~3%+1 && call :Fn.4 &; if %h%==0 && endlocal ! echo && endlocal && set ls=%ls:~0,3%%%lsplus%
+if %ls:~0,2%==ww && if %ls:~2,1%>=1 && if %v%==%wmax:~-4,4% && if %ls:~3%>=%wmax:~-4,4% && set lines=0 && set ls=%ls:~0,3%%0 && echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :eof
+if %ls:~0,2%==wc && if %ls:~2,1%>=1 && if %v%==%wmax:~-4,4% && if %ls:~3%>=%wmax:~-4,4% && set ls=%ls:~0,3%%0 && echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :eof
+echo -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20
+if not %ls:~0,1%==w && echo %e% $[0x0%col:~4,1%]%DEVICE%%%PATH%
+if %ls:~0,1%==w && setlocal && set "pathline=%DEVICE%%%PATH%" &; set /a pathline=%@retval%/%wmax:~0,4%+2 &; echo -e $[0x0%col:~4,1%]%DEVICE%%%PATH% &; set /a lines=%pathline% && call :Fn.4 &; if not %ls:~2,1%>=2 && endlocal && set lines=%lines% && set column=0 && set v0=%v0:~0,1%%%lines% && set pathline=%pathline% ! endlocal && set lines=%lines% && set column=0 && set v0=1%pathline% && set pathline=%pathline% &; if %ls:~2,1%>=2 && setlocal && set /a plus=%ls:~3%+%pathline% &; set ls=%ls:~0,2%%3%plus% &; endlocal && set lines=%lines% && set column=0 && set ls=%ls% && set v0=1%pathline% && set pathline=%pathline%
+if %ls:~0,2%==wc && call :Fn.4 &; if not %v%==%wmax:~-4,4% && set ls=%ls:~0,2%%2%ls:~3%
+if %ls:~0,2%==ww && if %ls:~2,1%>=2 && if %v%==%wmax:~-4,4% && if %ls:~3%>=%wmax:~-4,4% && set lines=%pathline% && set ls=%ls:~0,3%%%pathline% && echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :ls
+if %ls:~0,2%==wc && if %ls:~2,1%>=2 && if %v%==%wmax:~-4,4% && if %ls:~3%>=%wmax:~-4,4% && set ls=%ls:~0,3%%0 && set v0=1%v0:~1% && echo -n $[0x0%col:~2,1%][Hit Q to quit, other key to continue] && pause && call :Fn.5 0 %v% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 0 %v% &; call :lastkey &; if not %lastkey%==0x51 if not %lastkey%==0x71 |; endlocal && set lastkey=Q && goto :ls
+set lastkey=%ls%
+if %COUNT:~0,1%==0 && set "COUNT=2%COUNT:~1%" && goto :gotsubdirecho
+:nosubdirecho
+set lastkey=%ls%
+if not exist show && set PATHNAME= && set subdir= && set moredirs=
+call :recursels
+endlocal && set lastkey=%lastkey% && set lines=%lines% && set column=%column% && set v0=%v0% && set "COUNT=%COUNT%"
+if exist lastkey && if not %lastkey%==Q && set ls=%lastkey%
+shift
+goto :ls
+
+:moresubs
+if exist ELSE && if not exist show && if "%~1"=="" &; if %ELSE%==0 && set show=0 && goto :eof ! set show=1 && goto :eof
+if "%~1"=="" &; if not exist show && set show=0 && goto :eof ! goto :eof
+set "DIR=%~1" &; call Fn.11 "%DIR%" "\x20" && echo -e $[]%DIR% | set DIR=
+if "%DIR:~0,1%"==":" && set nodir=1 && set "DIR=%DIR:~1%" ! set nodir= &; if "%DIR:~-1,1%"=="*" && set "DIR=%DIR:~0,-1%" && set WCAEPATH=1 ! set WCAEPATH= &; set "DIR=%DIR%" &; set /a DIRLEN=%@retval% && if not exist DIR &; if %nodir%==1 && set ELSE=0 ! set ELSE=1 &; set DIRLEN= && shift && goto :moresubs
+if not exist WCAEPATH && if %i% "%DIR%"=="%name%" &; if %nodir%==1 && set show=0 && shift && goto :moresubs ! set show=1 && shift && goto :moresubs
+if %WCAEPATH%==1 && if not exist show && if %namelen%>=%DIRLEN% &; call if %i% "%DIR%"=="%^name:~0,%DIRLEN%%%" &; if %nodir%==1 && set show=0 && shift && goto :moresubs ! set show=1 && shift && goto :moresubs
+shift
+goto :moresubs
+
+:moredirs
+if exist ELSE && if "%~1"=="" &; if %ELSE%==0 && goto :eof ! pause --wait=0 %name%%%ext% >> (md)%mdbase%+255 && goto :eof
+if "%~1"=="" && goto :eof
+set "DIR=%~1" &; call Fn.11 "%DIR%" "\x20" && echo -e $[]%DIR% | set DIR=
+if "%DIR:~0,1%"==":" && set nodir=1 && set "DIR=%DIR:~1%" ! set nodir= &; if "%DIR:~-1,1%"=="*" && set "DIR=%DIR:~0,-1%" && set WCAEPATH=1 ! set WCAEPATH= &; set "DIR=%DIR%" &; set /a DIRLEN=%@retval% && if not exist DIR &; if %nodir%==1 && set ELSE=0 ! set ELSE=1 &; set DIRLEN= && shift && goto :moredirs
+if not exist WCAEPATH && if %i% "%DIR%"=="%filename%" &; if %nodir%==1 && goto :eof ! pause --wait=0 %name%%%ext% >> (md)%mdbase%+255 && goto :eof
+if %WCAEPATH%==1 && if %namelen%>=%DIRLEN% &; call if %i% "%DIR%"=="%^filename:~0,%DIRLEN%%%" &; if %nodir%==1 && goto :eof ! pause --wait=0 %name%%%ext% >> (md)%mdbase%+255 && goto :eof
+shift
+goto :moredirs
+
+:maskloop
+if %res%==%L% &; if %S%>=%LEN% && if %s%>=%len% && set result=1 && goto :eof ! if %S%>=%LEN% && if %wca%==1 && set result=1 && goto :eof ! set result=0 && goto :eof
+if %s%>=%len% && set result=0 && goto :eof
+call if "%^TEST:~%S%,1%"=="" && set result=0 && goto :eof
+call if "%^TEST:~%S%,1%"=="*" && set A=1 && set /a L=%L%-1 && set /a LEN=%LEN%-%N% && call set TEST=%^TEST:~%N%%% && set S=0 && set N=1 && set n=%s% && set sub=0 && goto :maskloop
+call if "%^TEST:~%S%,1%"=="?" && set /a N=%N%+1 && set /a S=%S%+1 && set /a s=%s%+1 && set /a res=%res%+1 && set /a sub=%sub%+1 && goto :maskloop
+if %A%==0 &; call if %i% "%^TEST:~%S%,1%"=="%^test:~%s%,1%" && set /a S=%S%+1 && set /a s=%s%+1 && set /a res=%res%+1 && set /a N=%N%+1 && goto :maskloop ! set result=0 && goto :eof
+call if %i% "%^TEST:~%S%,1%"=="%^test:~%s%,1%" && set /a N=%N%+1 && set /a S=%S%+1 && set /a s=%s%+1 && set /a res=%res%+1 && set /a sub=%sub%+1 && goto :maskloop ! set /a s=%n%+1 && set /a n=%n%+1 && set S=0 && set /a res=%res%-%sub% && set sub=0 && goto :maskloop
+
+:SFN
+set /A mdbase=%mdbase%-1
+if "%~1"=="PATH" && echo -n > (md)%mdbase%+1 && raw write (md)%mdbase%+1 \x0A && pause --wait=0 %~2 >> (md)%mdbase%+1 && raw cat --locate=\x2F --replace=\x0A (md)%mdbase%+1 > nul && cat (md)%mdbase%+1 | call :SFNFILE &; goto :eof
+if "%~1"=="FILE" && shift
+:SFNFILE
+set "name=%~n1" &; set /a namelen=%@retval% &; if not exist name && goto :eof ! if not %namelen%<=8 && set SFN=N && goto :eof
+set "ext=%~x1" &; set /a extlen=%@retval% &; if not %extlen%<=4 && set SFN=N && goto :eof ! set "ext=%ext:~1%"
+call :SFNCHAR "\x20" "." "+" "," ";" "\x3D" "[" "]" &; if %SFN%==N && goto :eof ! if not "%~2"=="" && shift && goto :SFNFILE ! goto :eof
+
+:SFNCHAR
+call Fn.11 "%name%" "%~1" && set SFN=N && goto :eof
+call Fn.11 "%ext%" "%~1" && set SFN=N && goto :eof
+if "%~2"=="" && goto :eof ! shift && goto :SFNCHAR
+
+:sortbuckets
+if not %bucket%>=36 if not %bucket%<=-1 || goto :eof
+set /A mdsort=%bucket% * 80 + %mdbuck% &; set /A mdsortnd=%mdsort%+80 && set /A index=%mdsort% * 0x200
+read %index% > nul ;; if %@retval%==0 &; if "%cmp:~1%"=="<=" && set /a bucket=%bucket%+1 && goto :sortbuckets ! set /a bucket=%bucket%-1 && goto :sortbuckets
+cat --skip=%index% --locate=\x00\x00\x00\x00 --number=1 (md)0+%mdsortnd% > nul ;; calc %?% % 4 && set /A length=%?%-3 ! set /A length=%?%-4
+if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; if not %bucket%==0 |; goto :endsortbucket
+set /a nf=%length%-%index%/4
+if %nf%==0 && set nf= && goto :endsortbucket
+if %SELECT%==Y && set nf= &; setlocal && set skip1=%index% && call :selectsort &; if %lastkey%==Q && endlocal && set lastkey=%lastkey% && goto :eof ! endlocal && set lastkey=%lastkey% && set lines=%lines% && set column=%column% && set v0=%v0% && set "COUNT=%COUNT%" && goto :nextsortbucket
+if %nf%==1 && read %index% > nul &; set /A ival=%@retval% &; cat --skip=%mbase%%%ival:~2,6% --length=0x%ival:~-2,2% (md)0+%mdlsend% | set vari= &; if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%vari% > nul && set /a vari=*0x8290 ! set vari=0
+if %nf%==1 && read %length% > nul &; set /A jval=%@retval% &; cat --skip=%mbase%%%jval:~2,6% --length=0x%jval:~-2,2% (md)0+%mdlsend% | set varj= &; if exist varj &; if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%varj% > nul && set /a varj=*0x8290 ! set varj=0
+if %nf%==1 && set nf= && set t=i && call :compare%cmp:~0,1% %vari% %varj% &; set vari= && set varj= && set t= &; if %icmp%==hi && write %index% %jval% > nul && write %length% %ival% > nul && set ival= && set icmp= && set jval= && set jcmp= ! set ival= && set icmp= && set jval= && set jcmp= &; goto :endsortbucket
+#LEGENDA#pv=pivot (left to right); pj=pointer going right (always starting=pv; pi=pointer going left, ps=pointer of found split (right from pi if pi and pv swapped); pval/jval/ival=value of pointer (memory address of filename); varp/varj/vari=filenames; jcmp/icmp: hi=bigger than varp, lo=smaller or equal then varp: swap jval and ival if jcmp=hi (not pj=pv!) and icmp=lo (move pv one step if pi=pv) + special cases: pi=pv, pi next to pv or pi=length
+set nf=
+setlocal
+:quicksort
+if %index%>=%length% && endlocal && set lastkey=%lastkey% && set lines=%lines% && set column=%column% && set v0=%v0% && set "COUNT=%COUNT%" && goto :endsortbucket
+if exist ps && set index=%ps% && set ps=
+:quicksortloop
+if %index%>=%length% && endlocal && set lastkey=%lastkey% && set lines=%lines% && set column=%column% && set v0=%v0% && set "COUNT=%COUNT%" &; if not %lastkey%==Y && if exist ps && goto :quicksort ! goto :endsortbucket
+set varp= && set jval= && set varj= && set ival= && set vari= && set jcmp= && set icmp= && set dij= && set djp= && set dip= && set pv= && set pj= && set pi=
+set pv=%index% &; read %pv% > nul &; set /A pval=%@retval% &; cat --skip=%mbase%%%pval:~2,6% --length=0x%pval:~-2,2% (md)0+%mdlsend% | set varp= &; if exist varp &; if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%varp% > nul && set /a varp=*0x8290 ! set varp=0
+:loopsetij
+if not exist pj && set pj=%pv% && set jval=%pval% && set varj=%varp% && set jcmp=lo
+set pi=%length%
+if not exist pi && echo QUICK exist && endlocal && goto :endsortbucket
+:loopijval
+if not exist jval && read %pj% > nul &; set /A jval=%@retval% && set varj=
+if not exist ival && read %pi% > nul &; set /A ival=%@retval% && set vari=
+:loopvarij
+if not exist vari && cat --skip=%mbase%%%ival:~2,6% --length=0x%ival:~-2,2% (md)0+%mdlsend% | set vari= && set icmp= &; if exist vari &; if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%vari% > nul && set /a vari=*0x8290 ! set vari=0
+if not exist varj && cat --skip=%mbase%%%jval:~2,6% --length=0x%jval:~-2,2% (md)0+%mdlsend% | set varj= &; if exist varj &; if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%varj% > nul && set /a varj=*0x8290 ! set varj=0
+set /a dip=%pi%-%pv%
+if not exist icmp && set t=i && call :compare%cmp:~0,1% %vari% %varp% &; set t= &; if %icmp%==hi && if not %pi%<=%pj% && set /A pi=%pi%-4 && set ival= && goto :loopijval ! if %dip%>=8 && set /A pj=%pj%+4 && set jcmp= && set jval= && set varj= && goto :loopijval
+set /a dij=%pi%-%pj% && set /a djp=%pj%-%pv%
+if not exist jcmp && set t=j && call :compare%cmp:~0,1% %varj% %varp% &; set t= && if %jcmp%==lo && if not %pj%>=%pi% && set /A pj=%pj%+4 && set jval= && set jcmp= && goto :loopijval
+if %pi%==%pv% &; if not %pv%>=%length% && set /A index=%index%+4 && goto :quicksortloop ! goto :quicksortloop
+if %pj%==%pv% && if %dij%==4 &; if %icmp%==lo && write %pv% %ival% > nul && write %pi% %pval% > nul && set /A index=%index%+4 && goto :quicksortloop
+#BADevenFORuniqueNAMES##if %equals%==0 &; if %pj%==%pi% && if %pi%==%length% &; if %icmp%==lo && write %pv% %ival% > nul && write %pi% %pval% > nul && set /A index=%index%+4 && goto :quicksortloop
+#NOTforFILESIZE#if %pj%==%pi% && if %pi%==%length% &; if %icmp%==lo && write %pv% %ival% > nul && write %pi% %pval% > nul && set /A index=%index%+4 && goto :quicksortloop
+if not %pj%>=%pi% && if %jcmp%==hi && if %icmp%==lo && write %pj% %ival% > nul && write %pi% %jval% > nul && set /A pi=%pi%-4 &; if not %pj%>=%pi% && goto :quicksortloop ! set /A ps=%pi%+8 && setlocal && set length=%pi% && goto :quicksortloop
+if %pj%==%pi% && if %icmp%==lo && write %pv% %ival% > nul && write %pi% %pval% > nul && set /A ps=%pi%+4 && setlocal && set /A length=%pi%-4 && goto :quicksortloop
+:selectsort
+set pv=%index% &; read %pv% > nul &; set /A pval=%@retval% &; cat --skip=%mbase%%%pval:~2,6% --length=0x%pval:~-2,2% (md)0+%mdlsend% | set varp= &; set "varpecho=%varp%" &; if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%varp% > nul && set /a varp=*0x8290 ! set varp=0
+set indexval=%pval% && set /A pi=%pv%+4 && set vari= && set variecho=
+:selectsortloop
+if %pi%<=%length% && read %pi% > nul &; set /A ival=%@retval% &; cat --skip=%mbase%%%ival:~2,6% --length=0x%ival:~-2,2% (md)0+%mdlsend% | set vari= &; set "variecho=%vari%" &; if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%vari% > nul && set /a vari=*0x8290 ! set vari=0
+if exist vari && set t=i && call :compare%cmp:~0,1% %vari% %varp% &; set t= &; if %icmp%==lo && set pv=%pi% && set pval=%ival% && set "varp=%vari%" && set "varpecho=%variecho%" && set ival= && set vari= && set icmp= ! set icmp= &; if not %pi%>=%length% && set /A pi=%pi%+4 && goto :selectsortloop
+call :selsorted "%varpecho%" &; if %lastkey%==Q && goto :eof
+if not %index%==%pv% && write %index% %pval% > nul && write %pv% %indexval% > nul
+set /A index=%index%+4 &; if %index%<=%length% && goto :selectsort ! goto :eof
+:endsortbucket
+if "%cmp:~1%"=="<=" && set skip=%index% && call :sortedaz &; if %lastkey%==Q && goto :eof
+if "%cmp:~1%"==">=" && set skip=%length% && call :sortedza &; if %lastkey%==Q && goto :eof
+:nextsortbucket
+if "%cmp:~1%"=="<=" &; if %lastkey%==Q && goto :eof ! if %bucket%<=34 && set /a bucket=%bucket%+1 && goto :sortbuckets ! goto :eof
+if "%cmp:~1%"==">=" &; if %lastkey%==Q && goto :eof ! if %bucket%>=1 && set /a bucket=%bucket%-1 && goto :sortbuckets ! goto :eof
+
+:callls
+setlocal
+set address= && set mdsort= && set mdls= && set skip= && set length= && set pointer= && set bucket= && set mdbuck= && set mdlsend= && set var= && set varpecho= && set SELECT= && set index= && set pv= && set pi= && set pj= && set pvar= && set ivar= && set jvar= && set varp= && set vari= && set varj= && set icmp= && set jcmp= && set dip= && set dij= && set djp=
+call :ls "%~1"
+endlocal && set lastkey=%lastkey% && set lines=%lines% && set column=%column% && set v0=%v0% && set "COUNT=%COUNT%"
+goto :eof
+
+:selsorted
+call :callls "%varpecho%"
+goto :eof
+
+:sortedaz
+read %skip% > nul &; set /A pointer=%@retval% &; cat --skip=%mbase%%%pointer:~2,-2% --length=0x%pointer:~-2,2% (md)0+%mdlsend% | set var=
+call :callls "%var%"
+set /A skip=%skip%+4 && set pointer= && set var=
+if %skip%<=%length% && goto :sortedaz
+set skip= && set pointer= && set var= && goto :eof
+
+:sortedza
+read %skip% > nul &; set /A pointer=%@retval% &; cat --skip=%mbase%%%pointer:~2,-2% --length=0x%pointer:~-2,2% (md)0+%mdlsend% | set var=
+call :callls "%var%"
+set /A skip=%skip%-4 && set pointer= && set var=
+if %skip%>=%index% && goto :sortedza
+set skip= && set pointer= && set var= && goto :eof
+
+:comparen
+if %i% "%~n1"=="%~n2" && set "ext1=%~x1" && set "ext2=%~x2" &; echo -e $[]%ext1% | set ext1= && echo -e $[]%ext2% | set ext2= && goto :compareloopn2
+set "name1=%~n1" &; echo -e $[]%name1% | set name1=
+set "name2=%~n2" &; echo -e $[]%name2% | set name2=
+:compareloopn
+if %i% "%name1:~0,1%"=="%name2:~0,1%" && set "name1=%name1:~1%" && set "name2=%name2:~1%" &; if exist name1 && if exist name2 && goto :compareloopn ! if not exist name1 && set %t%cmp=lo && set name2= && goto :eof ! set %t%cmp=hi && set name1= && goto :eof
+if %i% %name1:~0,1%<=%name2:~0,1% && set %t%cmp=lo ! set %t%cmp=hi
+set name1= && set name2= && goto :eof
+:compareloopn2
+if %i% "%ext1:~1,1%"=="%ext2:~1,1%" && set "ext1=.%ext1:~2%" && set "ext2=.%ext2:~2%" &; if not "%ext1:~1%"=="" && if not "%ext2:~1%"=="" && goto :compareloopn2 ! if "%ext1:~1%"=="" && set %t%cmp=lo && set ext2= && goto :eof ! set %t%cmp=hi && set ext1= && goto :eof
+if %i% %ext1:~1,1%<=%ext2:~1,1% && set %t%cmp=lo ! set %t%cmp=hi
+set ext1= && set ext2= && goto :eof
+
+:comparex
+if not %i% "%~x1"=="%~x2" && set "ext1=%~x1" && set "ext2=%~x2" &; echo -e $[]%ext1% | set ext1= && echo -e $[]%ext2% | set ext2= && goto :compareloopx2
+set "name1=%~n1" &; echo -e $[]%name1% | set name1=
+set "name2=%~n2" &; echo -e $[]%name2% | set name2=
+:compareloopx
+if %i% "%name1:~0,1%"=="%name2:~0,1%" && set "name1=%name1:~1%" && set "name2=%name2:~1%" &; if exist name1 && if exist name2 && goto :compareloopx ! if not exist name1 && set %t%cmp=lo && set name2= && goto :eof ! set %t%cmp=hi && set name1= && goto :eof
+if %i% %name1:~0,1%<=%name2:~0,1% && set %t%cmp=lo ! set %t%cmp=hi
+set name1= && set name2= && goto :eof
+:compareloopx2
+if %i% "%ext1:~1,1%"=="%ext2:~1,1%" && set "ext1=.%ext1:~2%" && set "ext2=.%ext2:~2%" &; if not "%ext1:~1%"=="" && if not "%ext2:~1%"=="" && goto :compareloopx2 ! if "%ext1:~1%"=="" && set %t%cmp=lo && set ext2= && goto :eof ! set %t%cmp=hi && set ext1= && goto :eof
+if %i% %ext1:~1,1%<=%ext2:~1,1% && set %t%cmp=lo ! set %t%cmp=hi
+set ext1= && set ext2= && goto :eof
+
+:comparel
+:compareh
+if %~1%cmp:~1%%%~2 && set %t%cmp=lo ! set %t%cmp=hi
+goto :eof
+
+:inmem
+if "%~1"=="" && goto :eof
+if not %folder%==1 if not %file%==1 if not exist SORT if not exist extmask if not exist NAME if not exist EXT |; setlocal && call :filter "%~1" ":goback" &; if %result%==1 && endlocal && set result=%result% ! endlocal && shift && goto :inmem
+#BAD#if not %moredirs%==1 if not exist extmask if not exist SORT if not exist NAME if not exist EXT |; setlocal && call :filter "%~1" ":goback" &; if %result%==1 && endlocal && set result=%result% ! endlocal && shift && goto :inmem
+set "An=%~n1" && set "Ax=%~x1" && set "ARG=%~1" &; set /A L=%@retval%&0xFF &; if %L%<=0xF && set L=0%L:~2% ! set L=%L:~2%
+pause --wait=0 %~1 >> (md)%mdls%+255
+if not %cmp:~0,1%==n if not %cmp:~0,1%==x |; if %cmp:~0,1%==n && set "A=%An%" ! if exist Ax && set "A=%Ax:~1%" ! set b=0
+if not %cmp:~0,1%==l if not %cmp:~0,1%==h |; cat --length=0 %DEVICE%%%PATH%%%~1 > nul && set /a F=*0x8290 ! set F=0
+if exist A &; if /i %A:~0,1%==A && if /i %A:~1,1%<=m && set b=5 ! if /i %A:~0,1%==A && if not /i %A:~1,1%<=m && set b=6 ! if /i %A:~0,1%==B && set b=7 ! if /i %A:~0,1%==C && set b=8 ! if /i %A:~0,1%==D && set b=9 ! if /i %A:~0,1%==E && set b=10 ! if /i %A:~0,1%==F && if /i %A:~1,1%<=m && set b=11 ! if /i %A:~0,1%==F && if not /i %A:~1,1%<=m && set b=12 ! if /i %A:~0,1%==G && set b=13 ! if /i %A:~0,1%==H && set b=14 ! if /i %A:~0,1%==I && set b=15 ! if /i %A:~0,1%==J && set b=16 ! if /i %A:~0,1%==K && set b=17 ! if /i %A:~0,1%==L && set b=18 ! if /i %A:~0,1%==M && if /i %A:~1,1%<=m && set b=19 ! if /i %A:~0,1%==M && if not /i %A:~1,1%<=m && set b=20 ! if /i %A:~0,1%==N && set b=21 ! if /i %A:~0,1%==O && set b=22 ! if /i %A:~0,1%==P && set b=23 ! if /i %A:~0,1%==Q && set b=24 ! if /i %A:~0,1%==R && set b=25 ! if /i %A:~0,1%==S && if /i %A:~1,1%<=m && set b=26 ! if /i %A:~0,1%==S && if not /i %A:~1,1%<=m && set b=27 ! if /i %A:~0,1%==T && if /i %A:~1,1%<=m && set b=28 ! if /i %A:~0,1%==T && if not /i %A:~1,1%<=m && set b=29 ! if /i %A:~0,1%==U && set b=30 ! if /i %A:~0,1%==V && set b=31 ! if /i %A:~0,1%==W && set b=32 ! if /i %A:~0,1%==X && set b=33 ! if /i %A:~0,1%==Y && set b=34 ! if /i %A:~0,1%==Z && set b=35
+if not exist b && if exist A &; if /i %A:~0,1%==0 && set b=1 ! if /i %A:~0,1%==1 && set b=2 ! if /i %A:~0,1%==2 && set b=3 ! if /i %A:~0,1%==3 && set b=4 ! if /i %A:~0,1%==4 && set b=4 ! if /i %A:~0,1%==5 && set b=4 ! if /i %A:~0,1%==6 && set b=4 ! if /i %A:~0,1%==7 && set b=4 ! if /i %A:~0,1%==8 && set b=4 ! if /i %A:~0,1%==9 && set b=4 ! if /i %A:~0,1%==@ && set b=0 ! if /i %A:~0,1%==$ && set b=0 ! if /i %A:~0,1%==_ && set b=0 ! if /i %A:~0,1%==- && set b=0 ! if /i %A:~0,1%==! && set b=0 ! if /i %A:~0,1%==~ && set b=0 ! if /i %A:~0,1%==& && set b=0 ! if /i %A:~0,1%==( && set b=0 ! if /i %A:~0,1%==) && set b=0 ! if /i %A:~0,1%==[ && set b=0 ! if /i %A:~0,1%==] && set b=0 ! if /i "%A:~0,1%"==" " && set b=0 ! if /i %A:~0,1%=={ && set b=0 ! if /i %A:~0,1%==} && set b=0 ! if /i %A:~0,1%==+ && set b=0 ! if /i %A:~0,1%==; && set b=0 ! if /i %A:~0,1%==, && set b=0 ! if /i %A:~0,1%==' && set b=0 ! if /i %A:~0,1%==` && set b=0 ! if /i %A:~0,1%==^ && set b=0 ! if /i %A:~0,1%==§ && set b=0 ! if /i %A:~0,1%==. && set b=0 ! set b=36
+if exist F &; if /i %F%==DIR && set b=0 ! if %F%<=500 && set b=1 ! if %F%<=1k && set b=2 ! if %F%<=2k && set b=3 ! if %F%<=3k && set b=4 ! if %F%<=4k && set b=5 ! if %F%<=5k && set b=6 ! if %F%<=6k && set b=7 ! if %F%<=7k && set b=8 ! if %F%<=8k && set b=9 ! if %F%<=10k && set b=10 ! if %F%<=20k && set b=11 ! if %F%<=40k && set b=12 ! if %F%<=70k && set b=13 ! if %F%<=100k && set b=14 ! if %F%<=150k && set b=15 ! if %F%<=250k && set b=16 ! if %F%<=400k && set b=17 ! if %F%<=650k && set b=18 ! if %F%<= && set b=19 ! if %F%<=1m && set b=20 ! if %F%<=2m && set b=21 ! if %F%<=4m && set b=22 ! if %F%<=7m && set b=23 ! if %F%<=10m && set b=24 ! if %F%<=20m && set b=25 ! if %F%<=30m && set b=26 ! if %F%<=40m && set b=27 ! if %F%<=50m && set b=28 ! if %F%<=70m && set b=29 ! if %F%<=100m && set b=30 ! if %F%<=150m && set b=31 ! if %F%<=250m && set b=32 ! if %F%<=500m && set b=33 ! if %F%<=1g && set b=34 ! set b=35
+if %b%<=35 && setlocal && set /A mdbuck=%b% * 80 + %mdbuck% &; cat --locate=\x00\x00\x00\x00 --number=1 (md)%mdbuck%+80 > nul &; set /A mem=%?% &; calc %mem% % 4 > nul && set /A mem=%mdbuck% * 0x200 + %mem% + 1 ! set /A mem=%mdbuck% * 0x200 + %mem% &; write %mem% 0x%address:~-6,6%%%L% > nul && endlocal
+set /A address=%address%+0x%L%+1
+set A= && set An= && set Ax= && set b= && set F= && set ARG= && set L= && shift
+goto :inmem
+
+:pagestat
+#-#+ not used: GRUB, GRUBVER, columns and counted chars (see PAGESTAT.G4B v0.2)
+#-# In grub4efi linelen=100, pagelen 29 er 30??? To get 'graphicsmode > nul ;; set /a GRMD=%@retval%' pager must be off is, required, otherwise vboprobe-info waiting for Q
+setlocal && set *
+if exist @uefi && graphicsmode > nul &; set /a grphmode=%@retval%
+if exist @uefi && if %grphmode%<=0xFF && call :checkFn.4 &; endlocal && set PAGELEN=%pagelen% && set LINELEN=%linelen% && set TABLEN=%tablen% && set v=0 && goto :eof
+setlocal && call :Fn.4 &; endlocal && set v=%v%
+if %v%>=1 && set /a v=%v%-1
+set /a v0=%v% && set vstart=%v% && set vorg=%v% && set v=
+call Fn.5 0 %vstart%
+set /a pagelen=%vstart%
+call :pagelen
+if %vstart%>=%pagelen% && set /a vstart=%pagelen%-2
+set /a pagelen=%pagelen%+1
+call Fn.5 0 %vstart%
+call :tablen
+call Fn.5 0 %vstart%
+set linelen=1
+call :linelen
+set vstart=%vorg%
+if %vstart%>=1 && set /a vstart=%vstart%-1 ! if %vstart%<=-1 && set vstart=0
+call Fn.5 0 %vstart%
+endlocal && set LINELEN=%linelen% && set PAGELEN=%pagelen% && set v=%vstart% && set TABLEN=%tablen%
+goto :eof
+
+:linelen
+echo -n -e \x20
+setlocal && call :Fn.4 &; endlocal && set v=%v%
+if %vstart%==%v% && set /a linelen=%linelen%+1 && goto :linelen
+set v=
+goto :eof
+
+:pagelen
+setlocal && call :Fn.4 &; endlocal && set v0=%v%
+echo -e \x20
+setlocal && call :Fn.4 &; endlocal && set v1=%v%
+if not %v0%==%v1% && set /a pagelen=%pagelen%+1 && goto :pagelen
+goto :eof
+
+:tablen
+setlocal && call :Fn.4 &; endlocal && set h0=%h% && set v0=%v%
+echo -e -n \t
+setlocal && call :Fn.4 &; endlocal && set h1=%h% && set v1=%v%
+set /a tablen=%h1%-%h0%
+call :Fn.4
+if %tablen%==0 && if %v%<=20 && echo v=%v% h=%h% && set v= && set h= && goto :tablen
+set h= && set v=
+goto :eof
+
+:checkFn.4
+setlocal
+clear
+set a=0 && set b=1 && set bmax=256
+call Fn.4 ;; set /a T%a%=%@retval%
+echo -n -e \t && call Fn.4 &; set /a T%b%=%@retval%
+call set /a tablen=%^T%b%%%-%^T%a%%%
+call set T%a%=%^T%b%%% && set /a a=%a%+1 && set /a b=%b%+1
+:collumnloop
+echo -n -e \t && call Fn.4 &; set /a T%b%=%@retval%
+call set /a len=%^T%b%%%-%^T%a%%% &; if not %b%>=%bmax% && if %len%==%tablen% && call set T%a%=%^T%b%%% && set /a a=%a%+1 && set /a b=%b%+1 && goto :collumnloop
+clear
+set t=0
+:tabloop
+if not %t%>=%a% && echo -n -e \t && set /a t=%t%+1 && goto :tabloop
+call Fn.4 &; set /a cursor=%@retval% &; set T0=%cursor% && call Fn.5 %cursor% 0
+set a=0 && set b=1 && set c=0
+:linelenloop
+echo -n -e \x20 && call Fn.4 &; set /a T%b%=%@retval%
+call set /a len=%^T%b%%%-%^T%a%%% && set /a a=%a%+1 && set /a c=%c%+1
+if %c%<=%tablen% && if %len%==1 && call set T%a%=%^T%b%%% && set /a b=%b%+1 && goto :linelenloop
+call Fn.4 &; set /a cursor=%@retval%
+set /a linelen=%t% * %tablen% + %c% &; set /a collumn=%linelen%/%tablen%
+clear
+set cursor0=0 && set c=1
+:pagelenloop
+echo && call Fn.4 &; set /a cursor=%@retval%
+if not %cursor%==%cursor0% && set /a c=%c%+1 && set cursor0=%cursor% && set cursor= && goto :pagelenloop
+set pagelen=%c%
+clear
+endlocal && set pagelen=%pagelen% && set collumn=%collumn% && set linelen=%linelen% && set tablen=%tablen% && set checkFn4=Y
+goto :eof
+
+:lastkey
+beep 0 1
+read 0x41a > nul &; set /A head=%@retval%&0xff &; if %head%>=0x20 && set /A lastmem=%head%+0x400-2 ! set /A lastmem=0x43C &; read %lastmem% > nul &; set /A lastkey=%@retval%&0xff
+if "%~1"=="" &; if %lastkey%==0x1B && set lastkey=0x71 && goto :eof ! goto :eof
+if "%~1"=="Esc" && if not %lastkey%==0x1B && goto :eof
+setlocal && call :Fn.4 &; endlocal && set hORG=%h% && set hINT=%h% && set vORG=%v% && set vINT=%v%
+if not %hORG%==0 && setlocal && echo && call :Fn.4 &; endlocal && set hINT=%h% && set vINT=%v% &; if %vINT%==%vORG% && set /a vORG=%vORG%-1
+echo -n $[0x0%col:~2,1%][Hit Q or Esc to quit, other key to continue] && pause --test-key &; set /A lastkey=%@retval%&0xff && call :Fn.5 %hINT% %vINT% && echo -n -e \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 && call :Fn.5 %hORG% %vORG%
+if %lastkey%==0x1B && set lastkey=0x71
+if not %lastkey%==0x51 if not %lastkey%==0x71 || goto :eof ! set lastkey=
+#NOTSOGOOD#call :Fn.5 %hORG% %vORG% && set lastkey= && goto :eof
+goto :eof
+
+:Fn.4
+#-#+ call Fn.4 - h is max 0-255 chars per line, position (h,v) (0,0) is 0 and (0,1) is 256 (in grub4efi text mode 20221128+30: 16 & h max +64, on some line h is always the same ?!)
+call Fn.4 ;; set /A h=%@retval% ;; set /a v=%h%>>8 ;; set /a h=%h%&0xff
+#NOT?#if not exist h && set h=0
+goto :eof
+
+:Fn.5
+call Fn.5 %~1 %~2
+goto :eof
+
+:colors
+debug msg=1
+color > (md)%mdbase%+1
+debug msg=0
+raw cat --locate=\x0A64_bit (md)%mdbase%+1 > nul &; set /a skip=%?%-2 &; raw cat --skip=%skip% --length=2 (md)%mdbase%+1 | set col=
+if not %col:~0,1%==0 && set colorsts=0x%col% &; if not %col:~1,1%==0 && color standard=0x0%col:~1,1% && clear ! color standard=0x07 && set col=07 && clear
+if not /i %col:~1,1%==F && set col=%col:~1,1%%%col:~1,1%%F8%col:~1,1% ! set col=77F87
+goto :eof
+
+:help
+if not "%~1"=="" && echo LIST.G4B v0.7 (20230518), by deomsh
+echo Function:  Wildcards '?'/ '*' in file names for ls; sort/ redirect/ pipe/ CMD
+echo Use 1:     LIST.G4B [switches] FILE
+echo Use 2:     LIST.G4B [-me] [switches] [DEVICE]PATH*.EXT1 [*.EXT2] [*.EXT...]
+echo Use 3:     LIST.G4B [-md] [switches] [DEVICE]PATH[:]DIR1[*]/ [[:]DIR...[*]/]
+echo Use 4:     LIST.G4B [-ms] [switches] [DEVICE]PATH [:][SUB1][*]/] [[:]SUB..[*]/]
+echo Use 5:     LIST.G4B [switches] FILE ">" "FILE2"
+echo Use 6:     LIST.G4B [switches] FILE "|" "TARGET" [VAR:varname]
+echo Use 7:     LIST.G4B [switches] FILE CMD "CMD1" ["CMD2"] ["CMD3"] ... ["CMD8"]
+echo Use 8:     LIST.G4B [/?|-?]
+echo Switches:  [-mdbase:startsector] [-case] [-sfn|--sfn] [-b|-l|-lh|-w|-c] [-d|-f]
+echo $[]           [-e|--e] [-me] [-md|-ms] [-o[g|-g]n|-n|e|-e|s|-s] [-qs]] [-s]
+echo $[]           [-col:NXDES] [-n|-nq]
+echo Wildcards: ? and * before, inside, after part of file name/ extension/ combined
+if "%~1"=="" && goto :eof
+echo Switches:
+echo Not case-sensitive and: order is free IF before FILE
+echo '-mdbase:startsector' max 0x7FEFFF (default 0x3000), must end on 1000-7FFF
+echo $[] if below/ above range: mdbase is changed with +0x1000/ +0x2000
+echo '-case' case-sensitive (with -on|-o-n|-ox|-o-x uppercase will come first/ last)
+echo '-sfn'/ '--sfn' 8+3 file or folder names/ Long Files Names only
+echo '-b' long list, OR '-l' long list with filesize, OR '-lh' same in KB, MB or GB
+echo $[] OR '-w' list for wide list (graphicsmode decides number of collumns: 5-12) OR
+echo '-c' list for collumn list (graphicsmode decides number of collumns: 5-12)
+echo '-d' output: directories only, OR '-f' output: files only
+echo '-e'/ '--e' output empty/ not-empty folders (with '-d' no files)
+echo '-me' multiple extensions after FILE: must start with '*.' - max 100 extensions
+echo '-o[g|-g]n|-n|e|-e|s|-s]' for sorting (order after '-o' is free)
+echo '-og' sort output: directories first, OR '-o-g' sort output: files first
+echo '-o[g|-g]n'/ '-o[g|-g]e' sort on name/ extension: a-z OR '-n'/ '-e' sort: z-a
+echo $[] OR '-o[g|-g]s'/ '-o[g|-g]-s' sort on filesize: low-high/ high-low
+echo '-qs' force 'quick sort' instead of 'selection sort' (not used for 'g'/ '-g')
+echo '-n' count files and folders and echo afterwards OR
+echo '-nq' same but quit, and export set-variable 'COUNT'
+echo '-s' parse sub-directories (with '-sfn': 8+3 only)
+echo '-col:NXDES' 5 numbers needed: 1-F; colors: N=file name, X=file extension
+echo $[]      D=not-empty directory, E=empty directory, S=sub-directory (for '-s')
+echo $[] Default 'colors': 77F87 (white, white, highlighted, grey, white)
+echo $[] To get color numbers use second number found with 'echo -h' (background black)
+echo $[] Instead '-col:NXDES' variable 'lscol=NXDES' can be set before (always exported)
+echo '-md' parse multiple directories, one asterisk wildcard at the end allowed
+echo $[] with ':' before: not parse. Always '/' needed afterwards OR
+echo '-ms' parse multiple sub-directories, use PATH '/:/ to skip root - see '-md'
+echo Both '-md'/ '-ms': use double qoutes if DIR's containing spaces (or use '\ ')
+echo Remarks:
+echo Single qoutes textual only, never used; default file names case insensitive
+echo Compatible with grub4dos versions 20170607 and later, grub4efi recent versions
+pause --wait=0 No memory used, except 0x3000+1 for '-sfn'; '-md' +0x100; sorting +0x1000
+echo Printing to screen can be interrupted by pressing 'Escape', ended with 'Q'
+echo Default colors are like 'ls', but empty directories grey (see color-switch)
+echo Compatible with actual status of pager (not autoswitching pager on!)
+echo Wildcard '?' replaces ONE char in NAME/ EXT, wildcard '*' undefined number
+echo With wildcard '*' after NAME and without EXT all extensions included (like DIR)
+echo To get only file/ folder-names having extensions: use '.?*' for '.EXT'
+echo With '-me' NO wildcards in extensions - in name-part of FILE still possible
+echo If FILE contains spaces, use double qoutes around, or escaped spaces: '\ '
+echo Redirecting: ">" / piping: "|" - the double qoutes are mandatory!
+echo Redirecting to FILE2: if containing spaces, use escaped spaces '\ ' only
+echo Piping: if targeting 'set VAR=' use "call set VAR=%^^^VAR% " VAR:VAR(name)
+echo Piping: VARnames are free EXCEPT 'vArZyXwV' and 'VaRzYxWv'
+echo Functions piping and redirecting are not compatible with [-b|-l|-lh]
+echo -e After CMD max 8 commands supported (in double qoutes) - watch use of '\x22' inside
+echo Internal variables I: 'DEVICE', 'PATH', 'name', 'ext' and 'file' (all combined)
+pause --wait=0 Internal variables II: 'filesize' and 'color': file => '$[]', folder => '$[0x0F]'
+echo -e Use of internal variables: always with 'call' and TWO '^^' inside: '\x25^^var\x25'
+echo Example: LIST.G4B /
+echo Example: LIST.G4B /*.g4b
+echo Example: LIST.G4B -w /*.?*
+echo Example: LIST.G4B /??t*.?*
+echo Example: LIST.G4B /*f*a*?
+echo Example: LIST.G4B -case (hd6,2)/EXT234/??T*.?*
+echo Example: LIST.G4B -sfn /
+echo Example: LIST.G4B -me (hd0,0)/*.txt *.g4b *.bat *.lst "*.E T"
+echo Example: LIST.G4B -n -e -b /
+echo Example: LIST.G4B -l /
+echo Example: LIST.G4B -lh /
+echo Example: LIST.G4B -og -s /
+echo Example: LIST.G4B -on /
+echo Example: LIST.G4B -o-g-n /
+echo Example: LIST.G4B -oe -c (hd0,0)/WINDOWS/SYSTEM/
+echo Example: LIST.G4B -c -on /
+echo Example: LIST.G4B -col:BDE6F -w -ogn -s (hd0,0)/WINDOWS/
+echo Example: LIST.G4B -l -os (hd0,0)/
+echo Example: LIST.G4B -md (hd0,0)/WINDOWS/SYS*/ COMMAND/ :INF/ "START MENU/"
+echo Example: LIST.G4B -ms (hd0,0)/WINDOWS/ SYS*/ IOSUBSYS/ :SYSTEM/
+echo Example: LIST.G4B -ms -s (hd0,0)/:/ IOSUBSYS/ INF/ APP*/ START*/
+echo Example: LIST.G4B -oe -l /F*.?*
+echo Example: LIST.G4B "(hd0,0)/pro???? ?*"
+echo Example: LIST.G4B "(hd0,0)/?at*.?* ">" (md)0x300+1
+echo Example: LIST.G4B "(hd0,0)/?at* "|" "call set VAR1=%^^^VAR1% " VAR:VAR1
+pause --wait=0 Example: LIST.G4B -d (hd0,0)/ "|" "echo -n -e $[0x00] $[0xDE]"
+pause --wait=0 Example: LIST.G4B (hd0,0)/ CMD "call if %^^^color%==$[] && call echo -n -e $[0x0E]                     %^^^name%%%%%^^^ext%  ! echo -n -e $[0xDE]%^^^name%%%%%^^^ext%$[0x00] "
+#OLD#pause --wait=0 Example: LIST.G4B -d --e (hd0,0)/ CMD "call echo $[0x08]%^^^file%/ && call ls                       %^^^file%/ && echo"
+pause --wait=0 Example: LIST.G4B -d --e (hd0,0)/ CMD "call echo -e $[0x09]%^^^file%/ && call                          LIST.G4B -bs %^^^file%/ && echo && debug msg=0"
