@@ -33,7 +33,7 @@ Not case-sensitive and: order is free IF before FILE
 '-nq' same but quit, and export set-variable 'COUNT'
 '-s' parse sub-directories (with '-sfn': 8+3 only)
 '-col:NXDES' 5 numbers needed: 1-F; colors: N=file name, X=file extension
- D=not-empty directory, E=empty directory, S=sub-directory (for '-s')
+      D=not-empty directory, E=empty directory, S=sub-directory (for '-s')
  Default 'colors': 77F87 (white, white, highlighted, grey, white)
  To get color numbers use second number found with 'echo -h' (background black)
  Instead '-col:NXDES' variable 'lscol=NXDES' can be set before (always exported)
