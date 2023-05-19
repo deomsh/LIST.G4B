@@ -16,7 +16,7 @@ debug msg=0
 set "i=/i" && set "n=-n" && set ls=n
 set CMDLINE=grub> %0 %*
 #BAD!!!#set "CMDLINE=grub> %0 %*"
-if exist col && setlocal && set /l "CMDLINE=%CMDLINE%" &; call Fn.11 "%CMDLINE%" "-col:" && endlocal && goto :parsecmd ! endlocal 
+if exist col && setlocal && set /l CMDLINE=%CMDLINE% &; call Fn.11 "%CMDLINE%" "-col:" && endlocal && goto :parsecmd ! endlocal 
 if exist col &; call Fn.11 "%col%" "0" && echo Existing variable 'col=%col%' is not valid, use help => LIST.G4B -? or /? && goto :eov
 if exist col &; checkrange 0x11111:0xFFFFF calc 0x%col% > nul || echo Existing variable 'col=%col%' is not valid, use help => LIST.G4B -? or /? && goto :eov
 :parsecmd
@@ -238,6 +238,7 @@ if %ls%==n && call :lslist "%~1" &; shift && goto :ls
 #NOT#if %ls%==b && call :blist "%~1" &; shift && goto :ls
 if %ls:~0,2%==ww && call :wide "%~1" &; shift && goto :ls
 if %ls:~0,2%==wc && call :widecolumns "%~1" &; shift && goto :ls
+if %pipe%==1 && pause --wait=0 %name%%%ext% | %TARGET% &; shift && goto :ls
 call :lsother "%~1" &; shift && goto :ls
 
 #NOT#:blist
@@ -276,7 +277,7 @@ if not %ls%==ls if not %ls%==lh |; if %ls%==lh && set len=8 ! set len=11 &; set 
 if not %ls%==ls if not %ls%==lh |; set spaces=\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20 &; if %spacelen%>=4 && call set spaces=%^spaces:~0,%spacelen%%% ! set spaces=
 if not %ls%==ls if not %ls%==lh |; echo -e %spaces%%%filesize%%%h%\x20\x20%color%%%name%$[0x0%col:~1,1%]%ext% && endlocal && goto :eof
 if %redirect%==1 && pause --wait=0 %name%%%ext% >> %TARGET% && endlocal && goto :eof
-if %pipe%==1 && pause --wait=0 %name%%%ext% | %TARGET% && endlocal && goto :eof
+#BAD#if %pipe%==1 && pause --wait=0 %name%%%ext% | %TARGET% && endlocal && goto :eof
 setlocal && set * && set cmd=%cmd% && set "CMD1=%CMD1%" && set "CMD2=%CMD2%" && set "CMD3=%CMD3%" && set "CMD4=%CMD4%" && set "CMD5=%CMD5%" && set "CMD6=%CMD6%" && set "CMD7=%CMD7%" && set "CMD8=%CDM8%" && set DEVICE=%DEVICE% && set "PATH=%PATH%" && set "name=%name%" && set "ext=%ext%" && set filesize=%filesize% && set color=%color% && set "filename=%filename%" && set "fileext=%fileext%"
 if %cmd%==1 && set "file=%DEVICE%%%PATH%%%~1"
 if %cmd%==1 && if exist CMD1 &; %CMD1%
