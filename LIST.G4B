@@ -200,7 +200,7 @@ if %subdir%==3 && if "%color%"=="$[0x0%col:~3,1%]" && shift && goto :ls
 if exist cmp && if /i "%~2"==":goback" && if "%color%"=="$[0x0%col:~2,1%]" && set result=1 && goto :eof
 if %show%==0 && shift && goto :ls
 if %EMPTY%==Y && if not %subdir%==2 && if "%color%"=="$[0x0%col:~2,1%]" && shift && goto :ls
-if %EMPTY%==N && if "%color%"=="$[0x0%col:~3,1%]" &; if not %s%==1 && shift && goto :ls ! if %subdir%==2 && shift && goto :ls
+if %EMPTY%==N && if not %subdir%==2 && if "%color%"=="$[0x0%col:~3,1%]" && shift && goto :ls
 if not %subdir%==1 if not %file%==1 |; if not "%color%"=="$[0x0%col:~0,1%]" && shift && goto :ls
 if %sfn%==0 && setlocal && call :SFN "FILE" "%name%.%ext%" &; if not %SFN%==N && if not %subdir%>=2 && endlocal && shift && goto :ls ! endlocal
 call Fn.11 "%name%" "\x20" && echo -e $[]%name% | set filename= ! set filename=%name%
