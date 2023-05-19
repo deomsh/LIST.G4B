@@ -1,5 +1,5 @@
 !BAT
-#-#+ LIST.G4B v0.7 (20230518), by deomsh
+#-#+ LIST.G4B v0.7 (20230519), by deomsh
 #-#+ Function: wildcards '?' and '*' in filenames for ls and sort on name, extension or filesize. Some redirecting/ piping and max 8 commands
 #-# Use 1: LIST.G4B [-col:NXDES] [-mdbase:startsector] [-case] [-sfn|--sfn] [-d|-f] [-e|--e] [-b|-l|-lh|-w|-c] [-ms|-md] [-me] [-o[g|-g]n|-n|e|-e|s|-s [-qs]] [-n|-nq] [-s] FILE [*.EXT] [DIR[*]/] [">" "FILE2"]|["|" "TARGET" [VAR:VAR]]|[CMD "CMD1" ["CMD2-8"]]
 #-# Use 2: LIST.G4B [/?|-?]
@@ -647,7 +647,7 @@ if not /i %col:~1,1%==F && set col=%col:~1,1%%%col:~1,1%%F8%col:~1,1% ! set col=
 goto :eof
 
 :help
-if not "%~1"=="" && echo LIST.G4B v0.7 (20230518), by deomsh
+if not "%~1"=="" && echo LIST.G4B v0.7 (20230519), by deomsh
 echo Function:  Wildcards '?'/ '*' in file names for ls; sort/ redirect/ pipe/ CMD
 echo Use 1:     LIST.G4B [switches] FILE
 echo Use 2:     LIST.G4B [-me] [switches] [DEVICE]PATH*.EXT1 [*.EXT2] [*.EXT...]
