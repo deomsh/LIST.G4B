@@ -19,8 +19,8 @@ Not case-sensitive and: order is free IF before FILE
 '-case' case-sensitive (with -on|-o-n|-ox|-o-x uppercase will come first/ last)
 '-sfn'/ '--sfn' 8+3 file or folder names/ Long Files Names only
 '-b' long list, OR '-l' long list with filesize, OR '-lh' same in KB, MB or GB
- OR '-w' list for wide list (graphicsmode decides number of collumns: 5-12) OR
-'-c' list for collumn list (graphicsmode decides number of collumns: 5-12)
+ OR '-w' list for wide list (graphicsmode decides number of columns: 5-12) OR
+'-c' list for column list (graphicsmode decides number of columns: 5-12)
 '-d' output: directories only, OR '-f' output: files only
 '-e'/ '--e' output empty/ not-empty folders (with '-d' no files)
 '-me' multiple extensions after FILE: must start with '*.' - max 100 extensions
