@@ -1,4 +1,4 @@
-LIST.G4B v0.7 (20230519), by deomsh
+LIST.G4B v0.8 (20231003), by deomsh
 Function:  Wildcards '?'/ '*' in file names for ls; sort/ redirect/ pipe/ CMD
 Use 1:     LIST.G4B [switches] FILE
 Use 2:     LIST.G4B [-me] [switches] [DEVICE]PATH*.EXT1 [*.EXT2] [*.EXT...]
